@@ -929,6 +929,12 @@ struct power_infusion_t final : public priest_spell_t
     harmful = false;
   }
 
+  bool ready() override
+  {
+    return !priest().external_buffs.disable_power_infusion &&
+           priest().external_buffs.power_infusion_windows.empty() && priest_spell_t::ready();
+  }
+
   void execute() override
   {
     priest_spell_t::execute();
@@ -4562,7 +4568,24 @@ struct priest_module_t final : public module_t
             debug_cast<priest_t*>( p )->buffs.power_infusion = pi_buff;
           }
 
-          if ( !p->external_buffs.power_infusion.empty() )
+          if ( p->external_buffs.disable_power_infusion )
+          {
+            pi_buff->set_chance( 0 );
+            return;
+          }
+
+          const auto& windows = p->external_buffs.power_infusion_windows;
+          if ( !windows.empty() && !p->external_buffs.power_infusion.empty() )
+            throw std::invalid_argument( "Specify Power Infusion times or windows, not both." );
+
+          if ( !windows.empty() )
+          {
+            p->register_combat_begin( [ pi_buff, windows ]( player_t* actor ) {
+              for ( const auto& [ start, duration ] : windows )
+                make_event( *actor->sim, start, [ pi_buff, duration ] { pi_buff->trigger( duration ); } );
+            } );
+          }
+          else if ( !p->external_buffs.power_infusion.empty() )
           {
             p->register_timed_buff_triggers( pi_buff, p->external_buffs.power_infusion );
           }

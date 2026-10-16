@@ -10998,7 +10998,9 @@ struct invoke_external_buff_t : public action_t
 
   bool ready() override
   {
-    if ( !buff )
+    if ( !buff || ( buff_str == "power_infusion" &&
+                    ( player->external_buffs.disable_power_infusion ||
+                      !player->external_buffs.power_infusion_windows.empty() ) ) )
       return false;
 
     return action_t::ready();
@@ -13511,6 +13513,31 @@ void player_t::create_options()
   };
 
   add_option( opt_external_buff_times( "external_buffs.power_infusion", external_buffs.power_infusion ) );
+  add_option( opt_bool( "external_buffs.disable_power_infusion", external_buffs.disable_power_infusion ) );
+  add_option( opt_func( "external_buffs.power_infusion_windows", [ this ]( sim_t*, std::string_view, std::string_view val ) {
+    std::vector<std::pair<timespan_t, timespan_t>> windows;
+    for ( auto entry : util::string_split<std::string_view>( val, "/" ) )
+    {
+      auto parts = util::string_split<std::string_view>( entry, ":", false );
+      if ( parts.size() != 2 )
+        throw std::invalid_argument( "Power Infusion windows require start:duration pairs." );
+
+      auto start = util::to_double( parts[ 0 ] );
+      auto duration = util::to_double( parts[ 1 ] );
+      if ( !std::isfinite( start ) || !std::isfinite( duration ) || start < 0 || duration <= 0 ||
+           !std::isfinite( start + duration ) || start + duration >= timespan_t::max().total_seconds() )
+        throw std::invalid_argument( "Power Infusion windows require finite start >= 0 and duration > 0." );
+
+      auto t = timespan_t::from_seconds( start );
+      auto d = timespan_t::from_seconds( duration );
+      if ( d <= 0_ms || ( !windows.empty() && t < windows.back().first + windows.back().second ) )
+        throw std::invalid_argument( "Power Infusion windows must be ordered, non-overlapping and at least 1 ms long." );
+
+      windows.emplace_back( t, d );
+    }
+    external_buffs.power_infusion_windows = std::move( windows );
+    return true;
+  } ) );
   add_option( opt_external_buff_times( "external_buffs.rallying_cry", external_buffs.rallying_cry ) );
   add_option( opt_external_buff_times( "external_buffs.potion_bomb_of_power", external_buffs.potion_bomb_of_power ) );
 

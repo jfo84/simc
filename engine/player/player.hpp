@@ -568,6 +568,8 @@ struct player_t : public actor_t
     std::string pool;
     std::unordered_map<buff_t*, std::vector<cooldown_t*>> invoke_cds;
     std::vector<timespan_t> power_infusion;
+    std::vector<std::pair<timespan_t, timespan_t>> power_infusion_windows;
+    bool disable_power_infusion = false;
     std::vector<timespan_t> rallying_cry;
     std::vector<timespan_t> potion_bomb_of_power;
     int soleahs_secret_technique;

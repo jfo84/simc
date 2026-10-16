@@ -55,6 +55,10 @@ jobs:
           ninja -C '${{ runner.workspace }}/b/ninja'
           ccache -s
 
+      - name: PI counterfactual regression
+        if: matrix.compiler == 'gcc-12' && matrix.cppVersion == 17
+        run: ctest --test-dir '${{ runner.workspace }}/b/ninja' -R '^PI_Counterfactual$' --output-on-failure
+
       - uses: actions/cache@v5
         with:
           path: |
