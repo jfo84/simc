@@ -25,7 +25,8 @@ Capture requests every event page for the selected fight with resources included
 It preserves raw events, actor metadata, and the report's absolute start time.
 Incomplete pagination or a cursor that does not advance is an error. API access
 requires a token authorized to read the report. Live API compatibility still needs
-verification against a real report; the test fixture is explicitly synthetic.
+verification against a real report; the API-shaped fixture is explicitly synthetic.
+Recorded public UI exports are included separately below.
 
 Summarize extracts combatant information, cast starts and completions, player and
 owned-pet damage, and PI applications, refreshes and removals. Times are seconds
@@ -34,6 +35,44 @@ a buff active at fight end is marked as end-censored. A removal or refresh witho
 an application is rejected because the starting state is unknown. Missing
 combatant information is also rejected. Raw events remain available for later
 reconstruction of targets, mechanics, other buffs, movement and deaths.
+
+## Import public UI exports without an API token
+
+The public report Summary has **Export to SimC** for the logged gear and talents.
+The Buffs and Casts event tables have **CSV** export controls. Select one recipient
+and Power Infusion in Buffs, then export its apply/remove events. Export Casts
+separately and follow **Next Page** until the final page. Preserve duplicate rows:
+not every logged cast is an independent foreground player decision.
+
+```sh
+python3 util_scripts/pi_log_exports.py \
+  --report-url 'https://www.warcraftlogs.com/reports/yMrk3jBH8txgvFL4?fight=47&source=137' \
+  --player Jeefy --profile tests/fixtures/pi_counterfactual/raid/jeefy.simc \
+  --pi-events tests/fixtures/pi_counterfactual/raid/pi-events.csv \
+  --casts tests/fixtures/pi_counterfactual/raid/casts.csv --output raid-evidence.json
+```
+
+This creates a separate `simc.pi.log_exports.v1` evidence bundle containing the
+observed PI windows, raw display rows, normalized ability names, canceled casts,
+profile and source hashes, and engine options for the intervention. It cannot be
+passed to the paired runner as a complete observation: UI CSV exports omit spell
+IDs, full resources/buff state, exact fight duration and proof of complete
+pagination. The character export also omits race. Those gaps remain explicit,
+and the bundle is never ranking-eligible.
+
+Two public examples captured on 2026-10-16 are checked in:
+
+- [Jeefy, Elemental Shaman, Mythic Vorasius](https://www.warcraftlogs.com/reports/yMrk3jBH8txgvFL4?fight=47&type=summary&source=137):
+  two PI windows and 260 cast/begin-cast rows, including 14 canceled casts.
+- [Vae, Unholy Death Knight, Nexus-Point Xenas +12](https://www.warcraftlogs.com/reports/m9tCZ7H68cBpJnrK?fight=4&type=summary&source=1201):
+  five PI windows and 689 rows across two Casts export pages.
+
+Source URLs, capture details and limits are in
+`tests/fixtures/pi_counterfactual/provenance.json`. Profiles were copied through
+the Summary export control; line breaks were restored after transferring the
+clipboard text through the native browser address field. Their export timestamp
+is not the combat timestamp. These are recorded data fixtures for reconstruction
+work, not evidence that a no-PI player model has been validated.
 
 ## Run a candidate behavior model
 

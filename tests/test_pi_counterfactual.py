@@ -13,6 +13,10 @@ spec = importlib.util.spec_from_file_location("pi_counterfactual", ROOT / "util_
 pi = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pi)
 FIXTURE = ROOT / "tests/fixtures/pi_counterfactual/synthetic.json"
+export_spec = importlib.util.spec_from_file_location("pi_log_exports", ROOT / "util_scripts/pi_log_exports.py")
+exports = importlib.util.module_from_spec(export_spec)
+export_spec.loader.exec_module(exports)
+
 
 
 class ImportTests(unittest.TestCase):
@@ -82,6 +86,64 @@ class ImportTests(unittest.TestCase):
         for page in self.bundle["pages"]:
             page["data"] = [e for e in page["data"] if e.get("abilityGameID") != pi.PI]
         self.assertEqual(pi.summarize(self.bundle, 1)["power_infusion_windows"], [])
+
+
+class LogExportTests(unittest.TestCase):
+    def raid(self):
+        directory = FIXTURE.parent / "raid"
+        return exports.import_exports(
+            "https://www.warcraftlogs.com/reports/yMrk3jBH8txgvFL4?fight=47&source=137",
+            "Jeefy", directory / "jeefy.simc", [directory / "pi-events.csv"], [directory / "casts.csv"])
+
+    def test_recorded_raid_windows_and_cancellations(self):
+        result = self.raid()
+        self.assertEqual(result["power_infusion_windows"], [
+            {"start": 4.255, "duration": 15.014}, {"start": 251.011, "duration": 15.035}])
+        self.assertEqual(len(result["cast_events"]), 260)
+        self.assertEqual(sum(e["canceled"] for e in result["cast_events"]), 14)
+        self.assertEqual(result["cast_events"][0]["ability_name"], "Stormkeeper")
+        self.assertFalse(result["ranking_eligible"])
+        self.assertIn("race", result["data_gaps"][-1])
+        self.assertEqual(result["with_pi_options"][-1],
+                         "external_buffs.power_infusion_windows=4.255:15.014/251.011:15.035")
+
+    def test_equal_timestamp_casts_are_not_deduplicated(self):
+        events = self.raid()["cast_events"]
+        duplicates = [e for e in events if e["time_ms"] == 292967 and e["ability_name"] == "Flame Shock"]
+        self.assertEqual(len(duplicates), 2)
+
+    def test_recorded_mplus_windows_and_both_cast_pages(self):
+        directory = FIXTURE.parent / "mythic-plus"
+        result = exports.import_exports(
+            "https://www.warcraftlogs.com/reports/m9tCZ7H68cBpJnrK?fight=4&source=1201",
+            "Vae", directory / "vae.simc", [directory / "pi-events.csv"],
+            [directory / "casts-1.csv", directory / "casts-2.csv"])
+        self.assertEqual(result["power_infusion_windows"], [
+            {"start": 51.866, "duration": 15.041}, {"start": 310.716, "duration": 15.008},
+            {"start": 455.561, "duration": 15.010}, {"start": 620.338, "duration": 15.017},
+            {"start": 816.619, "duration": 15.001}])
+        self.assertEqual(len(result["cast_events"]), 689)
+        self.assertEqual(result["cast_events"][-1]["time_ms"], 938504)
+        unknown = [e for e in result["cast_events"] if e["display"]["Source → Target"] == "VaeUnknown"]
+        self.assertEqual(len(unknown), 3)
+        self.assertFalse(result["ranking_eligible"])
+
+    def test_page_order_and_recipient_must_match(self):
+        directory = FIXTURE.parent / "mythic-plus"
+        with self.assertRaisesRegex(ValueError, "ordered"):
+            exports.read_events([directory / "casts-2.csv", directory / "casts-1.csv"])
+        events, _ = exports.read_events([directory / "pi-events.csv"])
+        with self.assertRaisesRegex(ValueError, "different recipient"):
+            exports.pi_windows(events, "Cyber")
+
+    def test_partial_pi_capture_and_timestamp_errors_are_rejected(self):
+        directory = FIXTURE.parent / "raid"
+        events, _ = exports.read_events([directory / "pi-events.csv"])
+        with self.assertRaisesRegex(ValueError, "missing"):
+            exports.pi_windows(events[:-1], "Jeefy")
+        for value in ("00:60.000", "0:5", "nan"):
+            with self.assertRaisesRegex(ValueError, "timestamp"):
+                exports.milliseconds(value)
 
 
 @unittest.skipUnless(os.environ.get("SIMC_CLI_PATH"), "Set SIMC_CLI_PATH for native engine checks")
