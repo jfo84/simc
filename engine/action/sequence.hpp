@@ -89,3 +89,29 @@ struct observed_sequence_t final : public action_t
   void reset() override;
   action_t* select_next();
 };
+
+// World-time inputs execute independently of foreground casts through native off-GCD dispatch.
+struct observed_off_gcd_t final : public action_t
+{
+  struct trace_entry_t
+  {
+    size_t index;
+    timespan_t due_time, start_time;
+    std::string action, overlapping_action;
+  };
+
+  std::vector<action_t*> intents;
+  std::vector<timespan_t> times;
+  std::vector<trace_entry_t> trace, reported_trace;
+  std::string options_text, time_str;
+  double max_wait_seconds = 5.0;
+  size_t cursor = 0;
+
+  observed_off_gcd_t( player_t*, util::string_view );
+  void init() override;
+  void init_finished() override;
+  void reset() override;
+  bool ready() override { return false; }
+  void schedule_next();
+  void dispatch();
+};

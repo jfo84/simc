@@ -6,12 +6,14 @@
 #include "sequence.hpp"
 
 #include "player/player.hpp"
+#include "buff/buff.hpp"
 #include "player/action_priority_list.hpp"
 #include <algorithm>
 #include <cmath>
 #include <map>
 #include "sim/option.hpp"
 #include "sim/sim.hpp"
+#include "sim/event.hpp"
 #include "sim/cooldown.hpp"
 #include "util/util.hpp"
 
@@ -401,6 +403,29 @@ std::vector<timespan_t> observed_times( std::string_view value )
   }
   return result;
 }
+
+std::vector<action_t*> observed_actions( player_t* player, const std::vector<std::string_view>& parts )
+{
+  std::vector<action_t*> intents;
+  std::map<std::string_view, action_t*> unique;
+  for ( size_t i = 1; i < parts.size(); ++i )
+  {
+    auto [ found, inserted ] = unique.emplace( parts[ i ], nullptr );
+    if ( inserted )
+    {
+      auto separator = parts[ i ].find( ',' );
+      auto name = parts[ i ].substr( 0, separator );
+      auto opts = separator == std::string_view::npos ? std::string_view{} : parts[ i ].substr( separator + 1 );
+      found->second = player->create_action( name, opts );
+      if ( !found->second || found->second->type == ACTION_SEQUENCE || found->second->type == ACTION_CALL ||
+           found->second->type == ACTION_VARIABLE || dynamic_cast<observed_off_gcd_t*>( found->second ) )
+        throw sc_invalid_apl_argument( "Observed intents must name executable actions." );
+      found->second->sequence = true;
+    }
+    intents.push_back( found->second );
+  }
+  return intents;
+}
 }  // namespace
 
 observed_sequence_t::observed_sequence_t( player_t* p, util::string_view options )
@@ -434,23 +459,7 @@ void observed_sequence_t::init()
   if ( !std::is_sorted( times.begin(), times.end() ) )
     throw sc_invalid_apl_argument( "Observed encounter times must be ordered." );
 
-  std::map<std::string_view, action_t*> unique;
-  for ( size_t i = 1; i < parts.size(); ++i )
-  {
-    auto [ found, inserted ] = unique.emplace( parts[ i ], nullptr );
-    if ( inserted )
-    {
-      auto separator = parts[ i ].find( ',' );
-      auto name = parts[ i ].substr( 0, separator );
-      auto opts = separator == std::string_view::npos ? std::string_view{} : parts[ i ].substr( separator + 1 );
-      found->second = player->create_action( name, opts );
-      if ( !found->second || found->second->type == ACTION_SEQUENCE || found->second->type == ACTION_CALL ||
-           found->second->type == ACTION_VARIABLE )
-        throw sc_invalid_apl_argument( "Observed intents must name executable actions." );
-      found->second->sequence = true;
-    }
-    intents.push_back( found->second );
-  }
+  intents = observed_actions( player, parts );
   if ( intents.size() != ( times.empty() ? delays.size() : times.size() ) ||
        ( !anchors.empty() && anchors.size() != intents.size() ) )
     throw sc_invalid_apl_argument( "Observed timings and actions must have the same length." );
@@ -566,4 +575,91 @@ action_t* observed_sequence_t::select_next()
   ++cursor;
   pending = false;
   return intent;
+}
+
+observed_off_gcd_t::observed_off_gcd_t( player_t* p, util::string_view options )
+  : action_t( ACTION_OTHER, "observed_off_gcd", p ), options_text( options )
+{
+  background = quiet = true;
+  harmful = interrupt_auto_attack = false;
+  trigger_gcd = 0_ms;
+  target = p;
+  add_option( opt_string( "times", time_str ) );
+  add_option( opt_float( "max_wait", max_wait_seconds ) );
+}
+
+void observed_off_gcd_t::init()
+{
+  auto parts = util::string_split<std::string_view>( options_text, ":", false );
+  if ( parts.size() < 2 )
+    throw sc_invalid_apl_argument( "Observed off-GCD stream requires times and actions." );
+  parse_options( parts.front() );
+  times = observed_times( time_str );
+  if ( !std::is_sorted( times.begin(), times.end() ) || !std::isfinite( max_wait_seconds ) ||
+       max_wait_seconds < 0 || max_wait_seconds >= timespan_t::max().total_seconds() )
+    throw sc_invalid_apl_argument( "Observed off-GCD times must be ordered and max_wait finite and nonnegative." );
+  intents = observed_actions( player, parts );
+  if ( times.size() != intents.size() )
+    throw sc_invalid_apl_argument( "Observed off-GCD times and actions must have the same length." );
+  action_t::init();
+}
+
+void observed_off_gcd_t::init_finished()
+{
+  action_t::init_finished();
+  if ( std::count_if( player->action_list.begin(), player->action_list.end(), []( const action_t* a ) {
+         return dynamic_cast<const observed_off_gcd_t*>( a ) != nullptr;
+       } ) != 1 || !action_list || action_list->name_str == "precombat" )
+    throw sc_invalid_apl_argument( "Use one observed off-GCD stream per player, outside precombat." );
+  if ( sim->threads != 1 || sim->iterations != 1 || player->enable_spell_queue || player->one_button_mode )
+    throw sc_invalid_apl_argument( "Observed off-GCD stream requires one iteration/thread and no spell queue or one-button mode." );
+  for ( auto* intent : intents )
+    if ( intent->background || intent->gcd() != 0_ms || intent->execute_time() != 0_ms || intent->channeled )
+      throw sc_invalid_apl_argument( "Observed off-GCD inputs must be available instant actions with no GCD." );
+  player->register_combat_begin( [ this ]( player_t* ) { schedule_next(); } );
+}
+
+void observed_off_gcd_t::reset()
+{
+  if ( !trace.empty() )
+    reported_trace = trace;
+  action_t::reset();
+  trace.clear();
+  cursor = 0;
+}
+
+void observed_off_gcd_t::schedule_next()
+{
+  if ( cursor < intents.size() )
+    make_event( *sim, std::max( 0_ms, times[ cursor ] - sim->current_time() ), [ this ] { dispatch(); } );
+}
+
+void observed_off_gcd_t::dispatch()
+{
+  if ( player->is_sleeping() )
+    return;
+  auto* intent = intents[ cursor ];
+  auto* overlapping = player->executing ? player->executing : player->channeling;
+  if ( dynamic_cast<observed_wait_t*>( overlapping ) )
+    overlapping = nullptr;
+  if ( intent->gcd() != 0_ms || intent->execute_time() != 0_ms || intent->channeled )
+    throw sc_runtime_error( "Observed off-GCD input acquired a GCD, cast time or channel." );
+  if ( player->resource_regeneration == regen_type::DYNAMIC )
+    player->do_dynamic_regen();
+  if ( player->buffs.stunned->check() || ( overlapping && !intent->usable_while_casting ) ||
+       !intent->action_ready() ||
+       intent->cooldown->queue_delay() > 0_ms )
+  {
+    auto remaining = timespan_t::from_seconds( max_wait_seconds ) - ( sim->current_time() - times[ cursor ] );
+    if ( remaining <= 0_ms )
+      throw sc_runtime_error( fmt::format( "Observed off-GCD input {} ({}) remained unavailable for {:.3f}s.",
+                                          cursor, intent->name(), max_wait_seconds ) );
+    make_event( *sim, std::min( 50_ms, remaining ), [ this ] { dispatch(); } );
+    return;
+  }
+  trace.push_back( { cursor, times[ cursor ], sim->current_time(), intent->name_str,
+                    overlapping ? overlapping->name_str : "" } );
+  intent->queue_execute( overlapping ? execute_type::CAST_WHILE_CASTING : execute_type::OFF_GCD );
+  ++cursor;
+  schedule_next();
 }

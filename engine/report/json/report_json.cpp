@@ -758,6 +758,24 @@ void to_json( JsonOutput& arr, const ::report::json::report_configuration_t& rep
   root[ "profile_source" ] = util::profile_source_string( p.profile_source_ );
   for ( auto* action : p.action_list )
   {
+    if ( auto* stream = dynamic_cast<observed_off_gcd_t*>( action ) )
+    {
+      auto replay = root[ "observed_off_gcd" ];
+      const auto& events = stream->trace.empty() ? stream->reported_trace : stream->trace;
+      replay[ "scheduled" ] = static_cast<unsigned>( events.size() );
+      replay[ "total" ] = static_cast<unsigned>( stream->intents.size() );
+      auto trace = replay[ "trace" ];
+      trace.make_array();
+      for ( const auto& event : events )
+      {
+        auto entry = trace.add();
+        entry[ "index" ] = static_cast<unsigned>( event.index );
+        entry[ "action" ] = event.action;
+        entry[ "due_time" ] = event.due_time;
+        entry[ "start_time" ] = event.start_time;
+        entry[ "overlapping_action" ] = event.overlapping_action;
+      }
+    }
     auto* observed = dynamic_cast<observed_sequence_t*>( action );
     if ( !observed )
       continue;

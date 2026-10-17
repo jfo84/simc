@@ -26,7 +26,7 @@ FROST_BINDINGS = {
 def extract_intentions(events, start, actor, bindings=FROST_BINDINGS):
     events = sorted((e for e in events if e.get("sourceID") == actor and e["type"] in {"cast", "begincast"}),
                     key=lambda e: e["timestamp"])
-    pending, unmatched, intents, unsupported, channels, off_gcd = {}, [], [], Counter(), set(), set()
+    pending, unmatched, intents, off_gcd_intents, unsupported, channels = {}, [], [], [], Counter(), set()
     missing_starts, targets = Counter(), set()
     for event in events:
         spell = pi.ability(event)
@@ -44,21 +44,21 @@ def extract_intentions(events, start, actor, bindings=FROST_BINDINGS):
             unsupported[name] += 1
         elif binding.get("channel"):
             channels.add(name)
-        elif binding.get("off_gcd"):
-            off_gcd.add(name)
         if binding and binding.get("cast_time") and begin is None:
             missing_starts[name] += 1
         if binding and not binding.get("off_gcd") and event.get("targetID", -1) > 0:
             targets.add(event["targetID"])
-        intents.append({"time": ((begin or event)["timestamp"] - start) / 1000,
+        stream = off_gcd_intents if binding and binding.get("off_gcd") else intents
+        stream.append({"time": ((begin or event)["timestamp"] - start) / 1000,
                         "spell_id": spell, "name": name, "target_id": event.get("targetID"),
                         "action": binding["action"] if binding else None,
                         "clock": binding.get("clock", "actor") if binding else "actor",
                         "start_source": "begincast" if begin else "cast",
                         "observed_completion": (event["timestamp"] - start) / 1000})
     unmatched.extend(pending.values())
-    intents.sort(key=lambda i: i["time"])
-    duplicates = Counter((i["time"], i["spell_id"]) for i in intents)
+    for stream in (intents, off_gcd_intents):
+        stream.sort(key=lambda i: i["time"])
+    duplicates = Counter((i["time"], i["spell_id"]) for i in intents + off_gcd_intents)
     blockers = []
     if unsupported:
         blockers.append({"kind": "unsupported_actions", "counts": dict(unsupported)})
@@ -73,13 +73,10 @@ def extract_intentions(events, start, actor, bindings=FROST_BINDINGS):
     if channels:
         blockers.append({"kind": "channel_timing", "actions": sorted(channels),
                          "reason": "Channel duration and interruptions are not encoded by this planner."})
-    if off_gcd:
-        blockers.append({"kind": "independent_off_gcd_stream", "actions": sorted(off_gcd),
-                         "reason": "Overlapping actions need a separate stream, not foreground serialization."})
     ambiguous = sum(n - 1 for n in duplicates.values() if n > 1)
     if ambiguous:
         blockers.append({"kind": "ambiguous_simultaneous_casts", "extra_rows": ambiguous})
-    return {"intents": intents, "blockers": blockers}
+    return {"intents": intents, "off_gcd_intents": off_gcd_intents, "blockers": blockers}
 
 
 def plan_from_capture(bundle, actor, bindings=FROST_BINDINGS):
@@ -121,6 +118,14 @@ def sequence_option(plan, timings, mode, fallback=None):
     return "actions=observed_sequence," + options + ":" + ":".join(actions)
 
 
+def off_gcd_option(plan):
+    stream = plan.get("off_gcd_intents", [])
+    if not stream:
+        return None
+    return sequence_option({"intents": stream}, [i["time"] for i in stream], "times").replace(
+        "actions=observed_sequence,", "actions+=/observed_off_gcd,", 1)
+
+
 def run_pair(plan, profile, binary, output, seed=42, fallback=None):
     if plan.get("schema") != "simc.pi.intent_plan.v1" or not plan.get("intents"):
         raise ValueError("A nonempty intention plan is required")
@@ -129,7 +134,8 @@ def run_pair(plan, profile, binary, output, seed=42, fallback=None):
     if not isinstance(seed, int) or isinstance(seed, bool) or seed <= 0:
         raise ValueError("Replay pairs require an explicit positive seed")
     duration = pi.number(plan["duration"], "fight duration")
-    if duration <= 0 or any(not 0 <= pi.number(i["time"], "intention time") < duration for i in plan["intents"]):
+    all_intents = plan["intents"] + plan.get("off_gcd_intents", [])
+    if duration <= 0 or any(not 0 <= pi.number(i["time"], "intention time") < duration for i in all_intents):
         raise ValueError("Intentions must lie within a positive recorded fight duration")
     profile, binary, output = Path(profile).resolve(strict=True), Path(binary).resolve(strict=True), Path(output).resolve()
     if any(c in str(output) for c in (",", "\r", "\n")):
@@ -143,6 +149,7 @@ def run_pair(plan, profile, binary, output, seed=42, fallback=None):
               "default_aura_delay=0", "default_aura_delay_stddev=0", "external_buffs.power_infusion=",
               "external_buffs.power_infusion_windows="]
     windows = "/".join(f'{w["start"]:.3f}:{w["duration"]:.3f}' for w in plan["power_infusion_windows"])
+    independent = off_gcd_option(plan)
     commands = {}
     manifest = {"binary": str(binary), "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
                 "profile": str(profile), "top_level_profile_sha256": hashlib.sha256(profile.read_bytes()).hexdigest(),
@@ -154,6 +161,8 @@ def run_pair(plan, profile, binary, output, seed=42, fallback=None):
                             f"external_buffs.disable_power_infusion={disabled}",
                             f"external_buffs.power_infusion_windows={schedule}",
                             f"json={output / (label + '.json')},version=2.0.0"]
+        if independent:
+            command.append(independent)
         commands[label] = command
         pi.write_json(output / "commands.json", commands)
         pi.write_json(output / "manifest.json", manifest)
@@ -168,17 +177,22 @@ def run_pair(plan, profile, binary, output, seed=42, fallback=None):
     selected = [e for e in trace if not e["fallback"]]
     if [e["index"] for e in selected] != list(range(len(plan["intents"]))):
         raise ValueError("Reference could not schedule the complete observed intention list")
+    if independent and reference["observed_off_gcd"]["scheduled"] != len(plan["off_gcd_intents"]):
+        raise ValueError("Reference could not schedule the complete off-GCD intention list")
     delays = [0 if i.get("clock") == "world" else e["idle_before"]
               for i, e in zip(plan["intents"], selected)]
     alternate = simulate("without_pi", delays, "delays", 1, "")
     first_pi = min((w["start"] for w in plan["power_infusion_windows"]), default=float("inf"))
     def prefix(player):
-        return [(e["index"], e["action"], e["start_time"], e["fallback"])
-                for e in player["observed_sequence"]["trace"] if e["start_time"] < first_pi]
+        foreground = [(e["index"], e["action"], e["start_time"], e["fallback"])
+                      for e in player["observed_sequence"]["trace"] if e["start_time"] < first_pi]
+        independent = [(e["index"], e["action"], e["start_time"])
+                       for e in player.get("observed_off_gcd", {}).get("trace", []) if e["start_time"] < first_pi]
+        return foreground, independent
     if prefix(reference) != prefix(alternate):
         raise ValueError("Replay intention traces differ before PI; inspect the paired reports")
     result = {"schema": "simc.pi.intent_pair.v1", "status": "diagnostic_only", "ranking_eligible": False,
-              "seed": seed, "scope": "fixed encounter timeline; foreground intention replay",
+              "seed": seed, "scope": "fixed encounter timeline; foreground and independent off-GCD intention replay",
               "reference_max_lateness": max(e["start_time"] - e["due_time"] for e in selected),
               "reference_fallbacks": sum(e["fallback"] for e in trace),
               "alternate_fallbacks": sum(e["fallback"] for e in alternate["observed_sequence"]["trace"]),
@@ -186,6 +200,8 @@ def run_pair(plan, profile, binary, output, seed=42, fallback=None):
               "without_pi_damage": pi.mean(alternate["collected_data"]["compound_dmg"]),
               "reference_scheduled": reference["observed_sequence"]["scheduled"],
               "without_pi_scheduled": alternate["observed_sequence"]["scheduled"],
+              "reference_off_gcd": reference.get("observed_off_gcd", {}),
+              "without_pi_off_gcd": alternate.get("observed_off_gcd", {}),
               "reference_native_executes": {s["name"]: pi.mean(s["num_executes"])
                                             for s in reference.get("stats", []) if pi.mean(s["num_executes"]) > 0},
               "without_pi_native_executes": {s["name"]: pi.mean(s["num_executes"])
@@ -195,6 +211,7 @@ def run_pair(plan, profile, binary, output, seed=42, fallback=None):
                          "Availability between native ready events is sampled at up to 50 ms intervals.",
                          "Delays are residuals of the native reference model, not directly observed reaction times.",
                          "Recorded encounter timestamps are lower bounds; the alternate never anticipates an intention.",
+                         "Off-GCD inputs are fixed world-time cues; this timing hypothesis requires validation.",
                          "Native availability and fallback rules can diverge from the player's decisions.",
                          "Encounter, patch and behavior reconstruction still require independent validation."]}
     pi.write_json(output / "diagnostic.json", result)

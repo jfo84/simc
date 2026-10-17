@@ -211,7 +211,9 @@ class IntentionPlanTests(unittest.TestCase):
         blockers = {b["kind"]: b for b in result["blockers"]}
         self.assertEqual(blockers["unsupported_actions"]["counts"], {"Ice Cold": 1, "Ice Barrier": 1})
         self.assertEqual(blockers["channel_timing"]["actions"], ["Ray of Frost"])
-        self.assertIn("Shimmer", blockers["independent_off_gcd_stream"]["actions"])
+        self.assertEqual([i["action"] for i in result["off_gcd_intents"]],
+                         ["shimmer", "use_item,name=emberwing_feather"])
+        self.assertFalse(any(i["action"] == "shimmer" for i in result["intents"]))
 
     def test_missing_hard_cast_start_is_not_treated_as_an_instant(self):
         event = {"type": "cast", "timestamp": 1000, "sourceID": 1, "targetID": 2,
@@ -231,10 +233,10 @@ class IntentionPlanTests(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get("SIMC_CLI_PATH"), "Set SIMC_CLI_PATH for native replay checks")
 class IntentionReplayTests(unittest.TestCase):
-    def pair(self, directory, plan):
+    def pair(self, directory, plan, extra_profile=""):
         profile = Path(directory) / "probe.simc"
         profile.write_text("mage=probe\nlevel=90\nrace=human\nspec=frost\noptimal_raid=0\n"
-                           "actions.precombat=snapshot_stats\n")
+                           "actions.precombat=snapshot_stats\n" + extra_profile)
         output = Path(directory) / "pair"
         result = replay.run_pair(plan, profile, os.environ["SIMC_CLI_PATH"], output)
         players = [pi.read_json(output / (name + ".json"))["sim"]["players"][0]
@@ -267,6 +269,94 @@ class IntentionReplayTests(unittest.TestCase):
         self.assertEqual(result["reference_damage"], result["without_pi_damage"])
         self.assertEqual([e["start_time"] for e in reference["observed_sequence"]["trace"]],
                          [e["start_time"] for e in alternate["observed_sequence"]["trace"]])
+
+    def test_independent_inputs_keep_world_time_during_diverging_casts(self):
+        plan = self.plan([{"start": 1, "duration": 6}])
+        plan["off_gcd_intents"] = [{"time": t, "action": "shimmer"} for t in (5,)]
+        with tempfile.TemporaryDirectory() as directory:
+            result, players = self.pair(directory, plan, "class_talents=shimmer:1\n")
+        for player in players:
+            stream = player["observed_off_gcd"]
+            self.assertEqual(stream["scheduled"], 1)
+            self.assertEqual([e["start_time"] for e in stream["trace"]], [5])
+            self.assertEqual([e["overlapping_action"] for e in stream["trace"]], ["frostbolt"])
+        self.assertGreater(players[1]["observed_sequence"]["trace"][2]["start_time"],
+                           players[0]["observed_sequence"]["trace"][2]["start_time"])
+        self.assertEqual(result["reference_native_executes"]["shimmer"], 1)
+        self.assertEqual(result["without_pi_native_executes"]["shimmer"], 1)
+
+    def test_no_pi_control_with_independent_inputs_is_identical(self):
+        plan = self.plan([])
+        plan["off_gcd_intents"] = [{"time": 0.5, "action": "shimmer"}]
+        with tempfile.TemporaryDirectory() as directory:
+            result, players = self.pair(directory, plan, "class_talents=shimmer:1\n")
+        self.assertEqual(result["reference_damage"], result["without_pi_damage"])
+        self.assertEqual(players[0]["observed_off_gcd"], players[1]["observed_off_gcd"])
+
+    def test_off_gcd_native_restrictions_and_invalid_actions_fail_explicitly(self):
+        common = [os.environ["SIMC_CLI_PATH"], "mage=probe", "level=90", "race=troll", "spec=frost",
+                  "optimal_raid=0", "iterations=1", "threads=1", "enable_spell_queue=0",
+                  "fixed_time=1", "max_time=6", "vary_combat_length=0",
+                  "actions=observed_sequence,times=0:frostbolt"]
+        cases = [("times=0.5,max_wait=0:berserking", 50, "remained unavailable"),
+                 ("times=0.5:frostbolt", 30, "instant actions with no GCD"),
+                 ("times=0.5;1:berserking", 30, "same length"),
+                 ("times=1;0:berserking:berserking", 30, "must be ordered"),
+                 ("times=0.5:shimmer", 30, "instant actions with no GCD")]
+        for option, status, message in cases:
+            with self.subTest(option=option):
+                result = subprocess.run(common + ["actions+=/observed_off_gcd," + option],
+                                        text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+                self.assertEqual(result.returncode, status, result.stdout[-2000:])
+                self.assertIn(message, result.stdout)
+
+    def test_foreground_controller_wait_is_not_a_cast_restriction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "wait.json"
+            result = subprocess.run(
+                [os.environ["SIMC_CLI_PATH"], "mage=probe", "level=90", "race=troll", "spec=frost",
+                 "optimal_raid=0", "iterations=1", "threads=1", "enable_spell_queue=0",
+                 "fixed_time=1", "max_time=8", "vary_combat_length=0",
+                 "actions=observed_sequence,times=0;6:frostbolt:frostbolt",
+                 "actions+=/observed_off_gcd,times=2.25,max_wait=0:berserking",
+                 f"json={output},version=2.0.0"],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stdout[-2000:])
+            event = pi.read_json(output)["sim"]["players"][0]["observed_off_gcd"]["trace"][0]
+        self.assertEqual(event["start_time"], 2.25)
+        self.assertEqual(event["overlapping_action"], "")
+
+    def test_independent_input_waits_for_native_stun_to_end(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "stun.json"
+            common = [os.environ["SIMC_CLI_PATH"], "mage=probe", "level=90", "spec=frost",
+                      "class_talents=shimmer:1", "optimal_raid=0", "iterations=1", "threads=1",
+                      "enable_spell_queue=0", "fixed_time=1", "max_time=8", "vary_combat_length=0",
+                      "raid_events=stun,first=1,duration=2,cooldown=100",
+                      "actions=observed_sequence,times=0;6:frostbolt:frostbolt"]
+            result = subprocess.run(common + ["actions+=/observed_off_gcd,times=1.5:shimmer",
+                                               f"json={output},version=2.0.0"],
+                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stdout[-2000:])
+            event = pi.read_json(output)["sim"]["players"][0]["observed_off_gcd"]["trace"][0]
+            self.assertGreaterEqual(event["start_time"], 3)
+            self.assertLessEqual(event["start_time"], 3.05)
+            failed = subprocess.run(common + ["actions+=/observed_off_gcd,times=1.5,max_wait=0:shimmer"],
+                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+            self.assertEqual(failed.returncode, 50, failed.stdout[-2000:])
+
+    def test_off_gcd_repeated_inputs_use_native_charges_and_cooldowns(self):
+        plan = self.plan([])
+        plan["duration"] = 30
+        plan["off_gcd_intents"] = [{"time": t, "action": "shimmer"} for t in (0.5, 0.6, 0.7)]
+        with tempfile.TemporaryDirectory() as directory:
+            profile = Path(directory) / "probe.simc"
+            profile.write_text("mage=probe\nlevel=90\nspec=frost\nclass_talents=shimmer:1\n"
+                               "actions.precombat=snapshot_stats\n")
+            with self.assertRaisesRegex(ValueError, "reference replay failed"):
+                replay.run_pair(plan, profile, os.environ["SIMC_CLI_PATH"], Path(directory) / "pair")
+            log = (Path(directory) / "pair/reference.log").read_text()
+            self.assertIn("Observed off-GCD input 1 (shimmer) remained unavailable", log)
 
     def test_world_anchor_and_cooldown_do_not_expand_with_player_time(self):
         plan = self.plan([{"start": 1, "duration": 6}])
