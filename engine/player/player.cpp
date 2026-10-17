@@ -11108,6 +11108,8 @@ action_t* player_t::create_action( util::string_view name, util::string_view opt
     return new sequence_t( this, options_str );
   if ( name == "strict_sequence" )
     return new strict_sequence_t( this, options_str );
+  if ( name == "observed_off_gcd" )
+    return new observed_off_gcd_t( this, options_str );
   if ( name == "observed_sequence" )
     return new observed_sequence_t( this, options_str );
   if ( name == "snapshot_stats" )

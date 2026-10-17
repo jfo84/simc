@@ -6,7 +6,7 @@ Changing haste requires simulating all subsequent casts, resources, procs and
 cooldown decisions again. Subtracting damage during PI does not answer this question.
 
 This implementation supplies event capture, observation extraction, exact PI
-windows, native foreground intention replay, and paired simulation diagnostics. It does **not** infer a player policy,
+windows, native foreground and off-GCD intention replay, and paired simulation diagnostics. It does **not** infer a player policy,
 reconstruct an encounter automatically, or produce a PI-adjusted ranking. All
 results have `ranking_eligible: false`, regardless of baseline damage agreement.
 
@@ -132,10 +132,11 @@ python3 util_scripts/pi_intent_replay.py run plan.json player.simc \
 The current planner has explicit Frost Mage spell bindings. It matches successful
 hardcasts to their begin events and records their start as the intention time.
 It refuses uncovered spells, missing or canceled cast starts, channel timing,
-overlapping off-GCD actions and multiple targets. The complete no-PI control
-contains 189 intentions and fails this preflight: Ice Cold, Ice Barrier, Ray of
-Frost, Shimmer, the on-use trinket, a pre-pull Glacial Spike, canceled starts and
-target transitions still need reconstruction. The recorded excerpt and blocker
+multiple targets and ambiguous simultaneous casts. Off-GCD inputs are extracted
+into a separate world-time stream rather than serialized as foreground casts.
+The complete no-PI control contains 183 foreground intentions and six independent inputs and still fails
+this preflight: Ice Cold, Ice Barrier, Ray of Frost, a pre-pull Glacial Spike,
+canceled starts and target transitions still need reconstruction. The recorded excerpt and blocker
 summary are in `tests/fixtures/pi_counterfactual/control/`. No incomplete plan is
 silently promoted to a complete replay.
 
@@ -167,7 +168,31 @@ supplied existing APL while an intention is unavailable after its time floor;
 it is a behavior assumption that must be validated. The controller never drops
 an unavailable intention silently.
 
-Reports include each intention's foreground readiness, native availability,
+The independent stream uses encounter timestamps in both arms:
+
+```ini
+class_talents=shimmer:1
+actions+=/observed_off_gcd,times=0.5;25:shimmer:shimmer
+```
+
+It dispatches through native off-GCD/cast-while-casting execution without taking
+over the foreground cast or GCD. Inputs must be instant, non-channel actions with
+no GCD, available to the configured character. Native cast-while-casting flags,
+stuns, resources, charges and cooldowns still apply. A non-castable input waits for the
+cast to finish; a controller's internal idle wait does not count as a cast.
+Availability is checked at the cue and at most 50 ms apart afterward. Any wait
+beyond `max_wait` seconds from the recorded cue fails explicitly, including a
+cooldown wait; the default is five seconds. Reports retain due and actual times,
+which expose late inputs. Repeated identical signatures reuse the same native
+action. This supports Shimmer overlap; an item with native cast-time or casting
+restrictions cannot be forced through them by the planner's spell binding.
+
+Off-GCD cues stay on world time even when foreground actions diverge. That is an
+explicit modeling assumption: a trinket aligned by the player to their rotation
+may require a different timing policy. A paired run also checks the independent
+input trace before PI. The reference must schedule the complete recorded stream.
+
+Reports include each foreground intention's readiness, native availability,
 due time, start and residual pause, plus fallback selections. `scheduled` counts
 actions selected for execution; a cast can still finish after the encounter ends.
 The paired diagnostic includes executed-action counts and damage, manifests and
@@ -252,5 +277,7 @@ disabling PI through scheduled and APL sources, changed cast counts after a full
 re-simulation, legacy compatibility and paired-run diagnostics. Native replay checks
 cover post-PI divergence, an identical no-PI control, encounter anchors, cooldown
 waiting, the first availability-relative delay, explicit fallback and invalid
-configuration. They do not
+configuration. Independent-stream checks exercise native overlap during diverging
+casts, an identical no-PI control, cast restrictions, cooldown exhaustion and
+controller idle waits and native stun events. They do not
 establish the accuracy of a logged-player counterfactual.

@@ -1,5 +1,6 @@
 {
   "schema": "simc.pi.intent_plan.v1",
+  "ranking_eligible": false,
   "report": {
     "code": "64LzFa2vM37CrNDJ",
     "startTime": 1776640627201
@@ -56,6 +57,69 @@
     "petOwner": null
   },
   "duration": 269.314,
+  "power_infusion_windows": [],
+  "off_gcd_intents": [
+    {
+      "time": 77.82,
+      "spell_id": 212653,
+      "name": "Shimmer",
+      "target_id": -1,
+      "action": "shimmer",
+      "clock": "world",
+      "start_source": "cast",
+      "observed_completion": 77.82
+    },
+    {
+      "time": 81.68,
+      "spell_id": 212653,
+      "name": "Shimmer",
+      "target_id": -1,
+      "action": "shimmer",
+      "clock": "world",
+      "start_source": "cast",
+      "observed_completion": 81.68
+    },
+    {
+      "time": 201.851,
+      "spell_id": 212653,
+      "name": "Shimmer",
+      "target_id": -1,
+      "action": "shimmer",
+      "clock": "world",
+      "start_source": "cast",
+      "observed_completion": 201.851
+    },
+    {
+      "time": 212.771,
+      "spell_id": 212653,
+      "name": "Shimmer",
+      "target_id": -1,
+      "action": "shimmer",
+      "clock": "world",
+      "start_source": "cast",
+      "observed_completion": 212.771
+    },
+    {
+      "time": 215.883,
+      "spell_id": 1250508,
+      "name": "Emberwing Heatwave",
+      "target_id": -1,
+      "action": "use_item,name=emberwing_feather",
+      "clock": "world",
+      "start_source": "cast",
+      "observed_completion": 215.883
+    },
+    {
+      "time": 251.524,
+      "spell_id": 212653,
+      "name": "Shimmer",
+      "target_id": -1,
+      "action": "shimmer",
+      "clock": "world",
+      "start_source": "cast",
+      "observed_completion": 251.524
+    }
+  ],
   "blockers": [
     {
       "kind": "unsupported_actions",
@@ -89,17 +153,9 @@
         "Ray of Frost"
       ],
       "reason": "Channel duration and interruptions are not encoded by this planner."
-    },
-    {
-      "kind": "independent_off_gcd_stream",
-      "actions": [
-        "Emberwing Heatwave",
-        "Shimmer"
-      ],
-      "reason": "Overlapping actions need a separate stream, not foreground serialization."
     }
   ],
   "assumption": "Reuse recorded intentions; recompute execution and availability in native SimC.",
-  "ranking_eligible": false,
-  "observed_successful_intents": 189
+  "observed_successful_intents": 183,
+  "observed_off_gcd_intents": 6
 }
