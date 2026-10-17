@@ -14,7 +14,10 @@ results have `ranking_eligible: false`, regardless of baseline damage agreement.
 
 Use Python 3.9 or newer. There are no third-party Python dependencies.
 Supply a Warcraft Logs client API OAuth access token in `WCL_ACCESS_TOKEN` using
-your normal credential mechanism; tokens are not saved in captures or manifests.
+your normal credential mechanism, or pass `--credentials /private/path/client.json`
+with a private JSON file containing `client_id` and `client_secret`. The client
+credentials flow reads public reports; the access token stays in memory. Secrets
+are not saved in captures or manifests.
 
 ```sh
 python3 util_scripts/pi_counterfactual.py capture REPORT_CODE 1 capture.json
@@ -24,17 +27,23 @@ python3 util_scripts/pi_counterfactual.py summarize capture.json PLAYER_ACTOR_ID
 Capture requests every event page for the selected fight with resources included.
 It preserves raw events, actor metadata, and the report's absolute start time.
 Incomplete pagination or a cursor that does not advance is an error. API access
-requires a token authorized to read the report. Live API compatibility still needs
-verification against a real report; the API-shaped fixture is explicitly synthetic.
-Recorded public UI exports are included separately below.
+requires a token authorized to read the report. API capture was verified against the public raid and dungeon examples below on
+2026-10-16. The API-shaped pagination fixture remains synthetic; recorded API
+state excerpts and public UI exports are identified separately.
 
 Summarize extracts combatant information, cast starts and completions, player and
 owned-pet damage, and PI applications, refreshes and removals. Times are seconds
 relative to the fight start. A refresh extends the active interval until removal;
 a buff active at fight end is marked as end-censored. A removal or refresh without
-an application is rejected because the starting state is unknown. Missing
-combatant information is also rejected. Raw events remain available for later
-reconstruction of targets, mechanics, other buffs, movement and deaths.
+an application is rejected unless fight-start combatant information establishes
+that PI was already active. Known initial auras are applied before equal-time
+transitions, independent of row order. Missing combatant information is also rejected. The observation retains initial auras,
+buff/stack transitions and actor-owned resource snapshots. `resourceActor=1`
+belongs to the event source; `resourceActor=2` belongs to the target. Amounts and
+resource types retain their raw API units. A snapshot is an observation, not proof
+of pre-decision state or a continuous resource trajectory. Raw events remain
+available for later reconstruction of targets, mechanics, movement and deaths.
+The API's `gameVersion` and `logVersion` fields do not certify an exact game build.
 
 ## Import public UI exports without an API token
 
@@ -124,10 +133,41 @@ option takes precedence over schedules and prevents priest PI action selection
 and generic external PI invocation. It affects this player's PI, not raid-wide
 priest targeting or other haste effects.
 
+## Live capture and first control check
+
+On 2026-10-16, complete API pagination returned 234,339 events in 24 pages for
+Jeefy's raid pull and 308,654 events in 31 pages for Vae's dungeon run. Their PI
+intervals agree with the independently exported UI CSV intervals to the millisecond.
+Both groups include Augmentation support, so their reconstruction must retain
+those interactions as well as PI. Full captures remain local artifacts; the small
+recorded API state excerpt in the fixtures is explicitly incomplete.
+
+A simpler [Kateros control pull](https://www.warcraftlogs.com/reports/64LzFa2vM37CrNDJ?fight=28&type=summary&source=50)
+has neither a priest nor Augmentation. Its 89,283 API events in nine pages contain
+no PI. A clean historical SimC build at
+`90b0d491aac3754db291e7cd7eaffe0d126c12f7` was used for an initial check, with
+recorded gear/talents, consumables and raid buffs adjusted to match logged intellect
+and secondary ratings. Over 269.314 seconds, the default damage APL predicts
+76,215.9 DPS against 59,907.0 observed: 27.22% too high. The candidate baseline is
+rejected; no PI estimate is produced.
+
+The profile, reproduction options, hashes, cast-count comparison and remaining
+input uncertainties are recorded in
+`tests/fixtures/pi_counterfactual/control/baseline-diagnostic.json`. This is a
+provisional validation result, not a benchmark or a diagnosis of player skill.
+The default APL omits recorded defensive/utility choices and uses the on-use
+trinket three times versus one recorded use. The exact historical game build,
+food and encounter constraints are not certified, and race comes from the current
+public character profile. Matching aggregate stats alone does not validate a
+reconstruction or isolate why its damage differs. The historical engine also
+warns that Emberwing Feather's stat-penalty proc chance uses an unverified 10%
+placeholder, which remains a mechanics uncertainty.
+
 ## Acceptance work still required
 
-1. Select a real pull, spec and matching character profile. Verify the API capture,
-   spell IDs, pets, game patch and gear/talent reconstruction against that pull.
+1. Certify historical patch, remaining consumable inputs, spell IDs and pets for
+   the selected recorded pulls. Public API capture and initial profile extraction
+   are available; complete input equivalence is not yet established.
 2. Reconstruct encounter constraints and fit player decision policies using a
    training interval. Preserve mistakes without copying impossible timestamps.
 3. Evaluate withheld cast sequences, timing, resources, damage windows and no-PI

@@ -1,0 +1,108 @@
+{
+  "status": "rejected_default_policy_baseline",
+  "ranking_eligible": false,
+  "source_url": "https://www.warcraftlogs.com/reports/64LzFa2vM37CrNDJ?fight=28&type=summary&source=50",
+  "source_captured_date": "2026-10-16",
+  "player": "Kateros",
+  "actor_id": 50,
+  "scope": "No-PI/no-Augmentation control; fixed duration; default damage APL, no fitted player policy.",
+  "engine_commit": "90b0d491aac3754db291e7cd7eaffe0d126c12f7",
+  "engine_tree": "clean detached upstream midnight historical revision",
+  "dbc": {
+    "Live": {
+      "build_level": 66838,
+      "wow_version": "12.0.1.66838",
+      "hotfix_date": "2026-04-14",
+      "hotfix_build": 66838,
+      "hotfix_hash": "35299d3102f81df160a056a7bfc0f0e395b47ec25e6bc5ef4cb27c74ff8df422"
+    },
+    "PTR": {
+      "build_level": 67088,
+      "wow_version": "12.0.5.67088",
+      "hotfix_date": "2026-04-18",
+      "hotfix_build": 67088,
+      "hotfix_hash": "5f7de3a3f9a0215e350b1b52f4904ae2a1bde403298a304d1421295da1c9d7f7"
+    },
+    "version_used": "Live"
+  },
+  "declared_iterations": 1000,
+  "duration_seconds": 269.314,
+  "observed_damage": 16133804,
+  "observed_dps": 59907.03788143208,
+  "model_damage": 20526021.5314742,
+  "model_dps": 76215.94692988179,
+  "relative_damage_error": 0.27223694619534244,
+  "observed_stats": {
+    "intellect": 2419,
+    "crit_rating": 778,
+    "haste_rating": 490,
+    "mastery_rating": 688,
+    "versatility_rating": 270
+  },
+  "model_stats": {
+    "intellect": 2419.0,
+    "crit_rating": 778.0,
+    "haste_rating": 490.0,
+    "mastery_rating": 688.0,
+    "versatility_rating": 270.0
+  },
+  "observed_casts": {
+    "Glacial Spike": 10,
+    "Frozen Orb": 8,
+    "Ray of Frost": 7,
+    "Flurry": 26,
+    "Ice Lance": 100,
+    "Frostbolt": 20,
+    "Ice Cold": 2,
+    "Ice Barrier": 7,
+    "Frost Nova": 2,
+    "Cone of Cold": 1,
+    "Shimmer": 5,
+    "Emberwing Heatwave": 1
+  },
+  "model_executes": {
+    "emberwing_heatwave": 3.0,
+    "flask": 1.0,
+    "flurry": 30.795795795795797,
+    "food": 1.0,
+    "frost_splinter": 1143.8198198198197,
+    "frostbolt": 22.43143143143143,
+    "frozen_orb": 10.001001001001,
+    "glacial_spike": 10.0,
+    "hand_of_frost": 47.673673673673676,
+    "ice_lance": 115.11311311311312,
+    "ray_of_frost": 7.0,
+    "summon_water_elemental": 1.0
+  },
+  "input_hashes": {
+    "kateros.simc": "43ae0aaaa89eb921fc5dec55314d4a1d880857823976ae6543d2c8c7cdeb2a8a",
+    "default-native.simc": "091dffebcbad0782633ae8160fa6a719e1809fc4955d8b3a38d78362891cfe90",
+    "api-capture.json": "e6fa6abeab03f05d8cb0613e4e6f3de0ac154f0ab5e633dfb7049d3a23bf66d8",
+    "api-observation.json": "a95ee28ec5fabd61e21e4bb5a13d22bb315239b266827ceddbf6165cc2213218",
+    "historical-exact-stats.json": "ebc893c2bc5ee3bb4237dd236ed27a00fbddba14099d67e61d578b11826009c4"
+  },
+  "reproduction": {
+    "profile": "tests/fixtures/pi_counterfactual/control/default-native.simc",
+    "options": [
+      "fixed_time=1",
+      "max_time=269.314",
+      "vary_combat_length=0",
+      "iterations=1000",
+      "threads=2",
+      "statistics_level=3",
+      "temporary_enchant=main_hand:thalassian_phoenix_oil_1",
+      "override.bloodlust=0",
+      "override.chaos_brand=0",
+      "override.blessing_of_the_bronze=0",
+      "override.power_word_fortitude=0"
+    ]
+  },
+  "limits": [
+    "Historical revision is contemporaneous; the log API does not certify the exact game build.",
+    "Race is taken from the current public character profile, not a historical race record.",
+    "Food identity/quality and encounter constraints are not fully reconstructed.",
+    "Default APL omits recorded defensive/utility choices and uses the on-use trinket three times versus one recorded use.",
+    "This rejects the candidate baseline; it does not identify PI damage or isolate the cause of the mismatch.",
+    "Historical engine warns Emberwing Feather's stat-penalty proc chance uses an unverified 10% placeholder."
+  ]
+}

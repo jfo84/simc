@@ -1,0 +1,24 @@
+# Generated from the pull combatantinfo gear and API talentImportCode.
+# Race inferred from the current public character profile; not certified historical.
+mage=Kateros
+level=90
+race=blood_elf
+role=spell
+spec=frost
+talents=CAEAAAAAAAAAAAAAAAAAAAAAAYGGLzMzsMmZmYmZmZMjZWMzMzMjZAAAgZmZWWmZaDAAAAAAsBw22YmZGMLzDYMDLAAAMzCwMwAmBD
+head=,id=251080,ilevel=272,bonus_id=12801/13440/6652/12667/13577/12699
+neck=,id=251096,ilevel=266,bonus_id=12795/13440/6652/13668/12699,gem_id=240967
+shoulder=,id=250058,ilevel=263,bonus_id=12794/13334/13340/6652/13574
+chest=,id=250063,ilevel=276,enchant_id=7987,bonus_id=13336/40/13575/12798
+waist=,id=263265,ilevel=263,bonus_id=13577/12790
+legs=,id=250059,ilevel=276,bonus_id=13334/13339/6652/13575/12798
+feet=,id=249630,ilevel=250,bonus_id=12786/6652/13577
+wrist=,id=258580,ilevel=259,bonus_id=12793/13440/6652/12667/13577/12699
+hands=,id=250061,ilevel=272,bonus_id=6652/12801/13440/13337/13574/3157
+finger1=,id=240949,ilevel=285,enchant_id=7967,bonus_id=12214/12497/12066/8791/13622/13667,gem_id=240866
+finger2=,id=249336,ilevel=263,bonus_id=6652/13668/13334/12794
+trinket1=,id=250144,ilevel=269,bonus_id=13440/42/12699/12796
+trinket2=,id=249346,ilevel=276,bonus_id=6652/13334/12798
+back=,id=260312,ilevel=266,bonus_id=12795/13440/6652/13577/12699
+main_hand=,id=193710,ilevel=289,enchant_id=7981,bonus_id=13440/6652/12701/12806
+off_hand=,id=245769,ilevel=272,bonus_id=12214/12497/12066/12693/8960/8791/13621/13667

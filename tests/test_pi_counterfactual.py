@@ -1,12 +1,14 @@
 """Offline importer tests and optional native engine integration checks."""
 
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("pi_counterfactual", ROOT / "util_scripts/pi_counterfactual.py")
@@ -81,6 +83,55 @@ class ImportTests(unittest.TestCase):
         self.assertEqual(result["model_damage_difference"], 300)
         self.assertEqual(result["baseline_relative_damage_error"], 0)
         self.assertEqual(result["model_without_pi_dps"], 30)
+
+    def test_recorded_resource_snapshots_belong_to_the_selected_actor(self):
+        fixture = pi.read_json(FIXTURE.parent / "raid/api-state-excerpt.json")
+        result = pi.actor_state_observations(fixture["events"], fixture["actor"], fixture["fight_start"])
+        self.assertEqual(len(result["resource_snapshots"]), 2)
+        self.assertEqual([s["resources"][0]["type"] for s in result["resource_snapshots"]], [11, 11])
+        self.assertEqual([s["resources"][0]["amount"] for s in result["resource_snapshots"]], [0, 10])
+        self.assertEqual([b["stacks"] for b in result["buff_events"] if b["stacks"] is not None], [4, 3])
+
+    def test_target_resources_are_not_cast_resources(self):
+        cast = next(e for e in self.bundle["pages"][0]["data"] if e["type"] == "cast")
+        cast.update(resourceActor=2, classResources=[{"type": 11, "amount": 99, "max": 150}])
+        observation = pi.summarize(self.bundle, 1)
+        self.assertEqual(next(c for c in observation["casts"] if c["type"] == "cast")["resources"], [])
+        self.assertEqual(observation["resource_snapshots"], [])
+
+    def test_initial_pi_aura_supplies_the_known_starting_state(self):
+        self.bundle["pages"][0]["data"][0]["auras"] = [{"ability": pi.PI, "stacks": 1}]
+        self.bundle["pages"][0]["data"] = [
+            e for e in self.bundle["pages"][0]["data"] if e["type"] != "applybuff"]
+        observation = pi.summarize(self.bundle, 1)
+        self.assertEqual(observation["power_infusion_windows"][0],
+                         {"start": 0, "duration": 5, "end_censored": False})
+        self.assertEqual(observation["initial_auras"], [{"ability": pi.PI, "stacks": 1}])
+
+    def test_initial_aura_precedes_equal_time_transitions_regardless_of_row_order(self):
+        events = self.bundle["pages"][0]["data"]
+        events[0]["auras"] = [{"ability": pi.PI, "stacks": 1}]
+        removal = dict(next(e for e in events if e["type"] == "removebuff"), timestamp=10000)
+        self.bundle["pages"][0]["data"] = [removal] + [
+            e for e in events if e["type"] not in {"applybuff", "removebuff"}]
+        result = pi.summarize(self.bundle, 1)
+        self.assertEqual(result["power_infusion_windows"],
+                         [{"start": 10, "duration": 3, "end_censored": False}])
+
+    def test_client_credentials_authenticate_without_returning_the_secret(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "client.json"
+            path.write_text(json.dumps({"client_id": "fixture-client", "client_secret": "fixture-secret"}))
+            with patch.object(pi.urllib.request, "urlopen", return_value=io.BytesIO(b'{"access_token":"fixture-token"}')) as request:
+                token = pi.client_access_token(path)
+            self.assertEqual(token, "fixture-token")
+            sent = request.call_args.args[0]
+            self.assertEqual(sent.full_url, "https://www.warcraftlogs.com/oauth/token")
+            self.assertEqual(sent.data, b"grant_type=client_credentials")
+            self.assertNotIn("fixture-secret", sent.full_url)
+            with patch.object(pi.urllib.request, "urlopen", return_value=io.BytesIO(b'{}')):
+                with self.assertRaisesRegex(ValueError, "missing an access token"):
+                    pi.client_access_token(path)
 
     def test_no_pi_is_a_valid_control(self):
         for page in self.bundle["pages"]:

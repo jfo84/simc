@@ -2,6 +2,7 @@
 """Import a WCL pull and diagnose paired PI/no-PI simulations. No ranking scores."""
 
 import argparse
+import base64
 from collections import Counter
 import hashlib
 import json
@@ -19,9 +20,12 @@ ENDPOINT = "https://www.warcraftlogs.com/api/v2/client"
 METADATA_QUERY = """
 query Pull($code: String!, $fights: [Int]) {
   reportData { report(code: $code) {
-    code startTime
-    fights(fightIDs: $fights) { id name startTime endTime encounterID difficulty kill }
-    masterData { actors { id name type subType petOwner } }
+    code startTime revision zone { id name }
+    fights(fightIDs: $fights) {
+      id name startTime endTime encounterID difficulty kill
+      friendlyPlayers friendlySpecs keystoneLevel keystoneTime
+    }
+    masterData { logVersion gameVersion lang actors { id name type subType petOwner } }
   } }
 }
 """
@@ -51,8 +55,29 @@ def number(value, label):
     return value
 
 
-def graphql(query, variables):
-    token = os.environ.get("WCL_ACCESS_TOKEN")
+def client_access_token(path):
+    credentials = read_json(path)
+    client_id, client_secret = credentials["client_id"], credentials["client_secret"]
+    if not all(isinstance(value, str) and value for value in (client_id, client_secret)):
+        raise ValueError("Client credential file requires nonempty client_id and client_secret strings")
+    authorization = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    request = urllib.request.Request(
+        "https://www.warcraftlogs.com/oauth/token", data=b"grant_type=client_credentials",
+        headers={"Authorization": f"Basic {authorization}", "Content-Type": "application/x-www-form-urlencoded"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            result = json.load(response)
+    except urllib.error.HTTPError as exc:
+        raise ValueError(f"Warcraft Logs OAuth returned HTTP {exc.code}") from None
+    token = result.get("access_token")
+    if not isinstance(token, str) or not token:
+        raise ValueError("Warcraft Logs OAuth response is missing an access token")
+    return token
+
+
+def graphql(query, variables, token=None):
+    token = token or os.environ.get("WCL_ACCESS_TOKEN")
     if not token:
         raise ValueError("Set WCL_ACCESS_TOKEN to a Warcraft Logs client API access token")
     request = urllib.request.Request(
@@ -101,7 +126,9 @@ def capture(code, fight_id, request=graphql):
         cursor = next_time
     return {
         "schema": "simc.pi.capture.v1",
-        "report": {"code": metadata["code"], "startTime": metadata["startTime"]},
+        "report": {key: metadata[key] for key in ("code", "startTime", "revision", "zone") if key in metadata},
+        "master_data": {key: metadata["masterData"][key] for key in ("logVersion", "gameVersion", "lang")
+                        if key in metadata["masterData"]},
         "fight": fight,
         "actors": metadata["masterData"]["actors"],
         "pages": pages,
@@ -124,6 +151,26 @@ def owned_actors(actors, player_id):
         if not added:
             return result
         result.update(added)
+
+
+def actor_state_observations(events, player_id, start):
+    buffs, snapshots = [], []
+    buff_types = {"applybuff", "refreshbuff", "removebuff", "applybuffstack", "removebuffstack"}
+    stat_keys = ("hitPoints", "maxHitPoints", "attackPower", "spellPower", "armor", "absorb",
+                 "versatility", "avoidance", "x", "y", "facing", "mapID")
+    for event in events:
+        time_ms = event["timestamp"] - start
+        if event["type"] in buff_types and event.get("targetID") == player_id:
+            buffs.append({"time_ms": time_ms, "type": event["type"], "spell_id": ability(event),
+                          "source_id": event.get("sourceID"), "stacks": event.get("stack")})
+        resource_actor = event.get("resourceActor")
+        owns_snapshot = ((resource_actor == 1 and event.get("sourceID") == player_id) or
+                         (resource_actor == 2 and event.get("targetID") == player_id))
+        if owns_snapshot and event.get("classResources"):
+            snapshots.append({"time_ms": time_ms, "event_type": event["type"],
+                              "resources": event["classResources"],
+                              "stats": {key: event[key] for key in stat_keys if key in event}})
+    return {"buff_events": buffs, "resource_snapshots": snapshots}
 
 
 def summarize(bundle, player_id):
@@ -158,32 +205,36 @@ def summarize(bundle, player_id):
             cursor = next_time
     events.sort(key=lambda e: e["timestamp"])
     owned = owned_actors(actors, player_id)
-    windows, casts, damage, combatants = [], [], [], []
-    active = None
+    windows, casts, damage = [], [], []
+    combatants = [e for e in events if e["type"] == "combatantinfo" and e.get("sourceID") == player_id]
+    inherited_pi = any(e["timestamp"] == start and any(a.get("ability") == PI for a in e.get("auras", []))
+                       for e in combatants)
+    active = start if inherited_pi else None
     for event in events:
         kind = event["type"]
         time = (event["timestamp"] - start) / 1000
-        if kind == "combatantinfo" and event.get("sourceID") == player_id:
-            combatants.append(event)
         if kind in {"applybuff", "refreshbuff", "removebuff"} and event.get("targetID") == player_id:
             if ability(event) == PI:
                 if kind == "applybuff":
-                    if active is not None:
+                    if active is not None and not (inherited_pi and event["timestamp"] == start):
                         raise ValueError("PI applied while already active; inspect the event capture")
-                    active = time
+                    inherited_pi = False
+                    active = event["timestamp"]
                 elif kind == "refreshbuff":
                     if active is None:
                         raise ValueError("PI refresh lacks its application; capture is insufficient")
                 elif active is None:
                     raise ValueError("PI removal lacks its application; capture is insufficient")
                 else:
-                    if time > active:
-                        windows.append({"start": active, "duration": time - active, "end_censored": False})
+                    if event["timestamp"] > active:
+                        windows.append({"start": (active - start) / 1000,
+                                        "duration": (event["timestamp"] - active) / 1000, "end_censored": False})
                     active = None
         if kind in {"begincast", "cast"} and event.get("sourceID") == player_id:
             casts.append({"time": time, "spell_id": ability(event), "type": kind,
                           "target_id": event.get("targetID"),
-                          "resources": event.get("classResources", [])})
+                          "resource_actor": event.get("resourceActor"),
+                          "resources": event.get("classResources", []) if event.get("resourceActor") == 1 else []})
         if kind == "damage" and event.get("sourceID") in owned:
             amount = number(event.get("amount"), "damage amount")
             if amount < 0:
@@ -191,8 +242,8 @@ def summarize(bundle, player_id):
             damage.append({"time": time, "spell_id": ability(event), "amount": amount,
                            "source_id": event["sourceID"], "target_id": event.get("targetID")})
     duration = (end - start) / 1000
-    if active is not None and active < duration:
-        windows.append({"start": active, "duration": duration - active, "end_censored": True})
+    if active is not None and active < end:
+        windows.append({"start": (active - start) / 1000, "duration": (end - active) / 1000, "end_censored": True})
     if not combatants:
         raise ValueError("Player combatantinfo is missing; gear/talent reconstruction is unavailable")
     if not casts or not damage:
@@ -202,6 +253,9 @@ def summarize(bundle, player_id):
         "report": bundle["report"], "fight": fight, "player": players[0],
         "duration": duration, "power_infusion_windows": windows,
         "combatantinfo": combatants, "casts": casts, "damage": damage,
+        "initial_auras": combatants[0].get("auras", []),
+        "master_data": bundle.get("master_data", {}),
+        **actor_state_observations(events, player_id, start),
         "owned_actor_ids": sorted(owned),
         "observed_damage": sum(e["amount"] for e in damage),
         "scope": "fixed recorded encounter timeline",
@@ -311,6 +365,8 @@ def main():
     fetch.add_argument("report_code")
     fetch.add_argument("fight", type=int)
     fetch.add_argument("output", type=Path)
+    fetch.add_argument("--credentials", type=Path,
+                       help="Private JSON client_id/client_secret file; access token stays in memory")
     summary = commands.add_parser("summarize", help="Extract one player's observed PI windows, casts, and pet damage")
     summary.add_argument("capture", type=Path)
     summary.add_argument("player", type=int)
@@ -326,7 +382,13 @@ def main():
         if args.command == "capture":
             if args.output.exists():
                 raise ValueError("Capture output already exists")
-            write_json(args.output, capture(args.report_code, args.fight))
+            if args.credentials:
+                token = client_access_token(args.credentials)
+                request = lambda query, variables: graphql(query, variables, token)
+                bundle = capture(args.report_code, args.fight, request)
+            else:
+                bundle = capture(args.report_code, args.fight)
+            write_json(args.output, bundle)
         elif args.command == "summarize":
             if args.output.exists():
                 raise ValueError("Observation output already exists")
