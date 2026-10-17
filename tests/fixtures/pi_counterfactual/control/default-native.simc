@@ -1,0 +1,185 @@
+mage="Kateros"
+source=default
+spec=frost
+level=90
+race=blood_elf
+role=spell
+position=back
+talents=CAEAAAAAAAAAAAAAAAAAAAAAAYGGLzMzsMmZmYmZmZMjZWMzMzMjZAAAgZmZWWmZaDAAAAAAsBw22YmZGMLzDYMDLAAAMzCwMwAmBD
+
+# Default consumables
+potion=disabled
+flask=flask_of_the_magisters_2
+food=silvermoon_parade
+augmentation=disabled
+temporary_enchant=main_hand:thalassian_phoenix_oil_2
+
+# This default action priority list is automatically created based on your character.
+# It is a attempt to provide you with a action list that is both simple and practicable,
+# while resulting in a meaningful and good simulation. It may not result in the absolutely highest possible dps.
+# Feel free to edit, adapt and improve it to your own needs.
+# SimulationCraft is always looking for updates and improvements to the default action lists.
+
+# Executed before combat begins. Accepts non-harmful actions only.
+actions.precombat=arcane_intellect
+actions.precombat+=/snapshot_stats
+actions.precombat+=/variable,name=target_swapping,op=reset,default=0
+actions.precombat+=/summon_water_elemental
+# Frostfire can open with a precast Blizzard against all target counts. Spellslinger AoE starts at 4+, but Blizzard is only cast with any of the Blizzard talents.
+actions.precombat+=/blizzard,if=talent.frostfire_bolt|active_enemies>=4&(talent.freezing_rain|talent.freezing_winds)
+actions.precombat+=/glacial_spike
+actions.precombat+=/frostbolt
+
+# Executed every time the actor is available.
+actions=call_action_list,name=cds
+# Frostfire AoE starts at 3+ targets.
+actions+=/run_action_list,name=ff_aoe,if=talent.frostfire_bolt&active_enemies>=3
+actions+=/run_action_list,name=ff_st,if=talent.frostfire_bolt
+actions+=/run_action_list,name=ss_tarswap,if=variable.target_swapping
+# Spellslinger AoE starts at 4+ targets
+actions+=/run_action_list,name=ss_aoe,if=active_enemies>=4
+actions+=/run_action_list,name=ss_st
+
+# Potion, Items and Racials are used on cd for Frostfire and paired with either Orb or Ray as Spellslinger.
+actions.cds=variable,name=ff_trinket_timing,value=talent.frostfire_bolt
+actions.cds+=/variable,name=ss_trinket_timing,value=talent.splinterstorm&(time=0|fight_remains<15|prev_gcd.1.frozen_orb|cooldown.ray_of_frost.charges>=1&debuff.freezing.react<6&!buff.fingers_of_frost.react&(icicles<3|time-action.potion.last_used<25))
+# Use Haste trinkets always after pot, Crit trinkets always before pot, and Mastery trinkets after pot if Crit is your highest stat and before pot otherwise.
+actions.cds+=/use_item,name=nevermelting_ice_crystal,if=variable.ff_trinket_timing|variable.ss_trinket_timing
+actions.cds+=/use_item,name=freightrunners_flask,if=variable.ff_trinket_timing|variable.ss_trinket_timing
+actions.cds+=/use_item,name=vaelgors_final_stare,if=(variable.ff_trinket_timing|variable.ss_trinket_timing)&(stat.haste_rating>stat.crit_rating|stat.versatility_rating>stat.crit_rating)
+actions.cds+=/potion,if=variable.ff_trinket_timing|variable.ss_trinket_timing|fight_remains<35
+actions.cds+=/use_item,name=vaelgors_final_stare,if=variable.ff_trinket_timing|variable.ss_trinket_timing
+actions.cds+=/use_items
+actions.cds+=/blood_fury,if=variable.ff_trinket_timing|variable.ss_trinket_timing
+actions.cds+=/berserking,if=variable.ff_trinket_timing|variable.ss_trinket_timing
+actions.cds+=/fireblood,if=variable.ff_trinket_timing|variable.ss_trinket_timing
+actions.cds+=/ancestral_call,if=variable.ff_trinket_timing|variable.ss_trinket_timing
+# Opener Frostfire
+actions.cds+=/flurry,if=talent.frostfire_bolt,line_cd=9999
+actions.cds+=/glacial_spike,if=talent.frostfire_bolt,line_cd=9999
+actions.cds+=/flurry,if=talent.frostfire_bolt,line_cd=9999
+actions.cds+=/ray_of_frost,if=talent.frostfire_bolt,line_cd=9999
+actions.cds+=/frozen_orb,if=talent.frostfire_bolt,line_cd=9999
+# Opener Spellslinger ST
+actions.cds+=/ice_lance,if=active_enemies<=3&talent.flash_freeze&talent.splinterstorm,line_cd=9999
+actions.cds+=/ray_of_frost,if=active_enemies<=3&talent.splinterstorm&!variable.target_swapping,line_cd=9999
+actions.cds+=/ray_of_frost,target_if=min:debuff.freezing.react,if=active_enemies<=3&talent.splinterstorm&variable.target_swapping,line_cd=9999
+# Opener Spellslinger AoE
+actions.cds+=/flurry,if=active_enemies>=4&talent.wintertide&talent.splinterstorm&!variable.target_swapping,line_cd=9999
+actions.cds+=/flurry,target_if=min:debuff.freezing.react,if=active_enemies>=4&talent.wintertide&talent.splinterstorm&variable.target_swapping,line_cd=9999
+actions.cds+=/frozen_orb,if=active_enemies>=4&talent.splinterstorm,line_cd=9999
+actions.cds+=/ray_of_frost,if=active_enemies>=4&talent.splinterstorm&!variable.target_swapping,line_cd=9999
+actions.cds+=/ray_of_frost,target_if=min:debuff.freezing.react,if=active_enemies>=4&talent.splinterstorm&variable.target_swapping,line_cd=9999
+# End-Of-Fight Actions
+actions.cds+=/ray_of_frost,if=fight_remains<12&!variable.target_swapping
+actions.cds+=/ray_of_frost,target_if=min:debuff.freezing.react,if=fight_remains<12&variable.target_swapping
+# Externals
+actions.cds+=/invoke_external_buff,name=power_infusion,if=buff.power_infusion.down
+
+actions.ff_aoe=blizzard,if=buff.freezing_rain.up
+actions.ff_aoe+=/flurry,if=buff.brain_freeze.react&buff.thermal_void.down
+actions.ff_aoe+=/frozen_orb
+actions.ff_aoe+=/glacial_spike
+actions.ff_aoe+=/comet_storm
+actions.ff_aoe+=/blizzard,if=active_enemies>=(5-talent.freezing_rain-talent.freezing_winds)&(cooldown.frozen_orb.remains>12*spell_haste|!talent.freezing_rain)
+actions.ff_aoe+=/ice_lance,if=buff.fingers_of_frost.react
+actions.ff_aoe+=/ice_lance,if=debuff.freezing.stack>=10
+actions.ff_aoe+=/flurry,if=cooldown_react
+actions.ff_aoe+=/ray_of_frost,if=!buff.frostfire_empowerment.react
+actions.ff_aoe+=/frostbolt
+actions.ff_aoe+=/call_action_list,name=movement
+
+actions.ff_st=flurry,if=buff.brain_freeze.react&buff.thermal_void.down
+actions.ff_st+=/frozen_orb
+actions.ff_st+=/glacial_spike
+actions.ff_st+=/comet_storm
+actions.ff_st+=/ice_lance,if=buff.fingers_of_frost.react
+actions.ff_st+=/ice_lance,if=debuff.freezing.stack>=10
+actions.ff_st+=/flurry,if=cooldown_react
+actions.ff_st+=/ray_of_frost,if=active_enemies=1|!buff.frostfire_empowerment.react
+actions.ff_st+=/frostbolt
+actions.ff_st+=/call_action_list,name=movement
+
+actions.movement=any_blink,if=movement.distance>5
+actions.movement+=/blizzard,if=buff.freezing_rain.up
+actions.movement+=/ice_nova,if=talent.cone_of_frost
+actions.movement+=/cone_of_cold,if=talent.cone_of_frost
+actions.movement+=/ice_lance
+
+actions.ss_aoe=comet_storm
+actions.ss_aoe+=/blizzard,if=buff.freezing_rain.up
+actions.ss_aoe+=/flurry,if=buff.brain_freeze.react&buff.thermal_void.down
+actions.ss_aoe+=/ice_lance,if=buff.fingers_of_frost.react=2
+actions.ss_aoe+=/frozen_orb
+actions.ss_aoe+=/glacial_spike
+actions.ss_aoe+=/ice_lance,if=buff.fingers_of_frost.react
+actions.ss_aoe+=/ice_lance,if=debuff.freezing.react>=6
+actions.ss_aoe+=/ice_nova,if=talent.cone_of_frost
+actions.ss_aoe+=/cone_of_cold,if=talent.cone_of_frost
+actions.ss_aoe+=/blizzard,if=talent.freezing_winds
+actions.ss_aoe+=/ray_of_frost,if=icicles<3|time-action.potion.last_used<25
+actions.ss_aoe+=/flurry,if=cooldown_react
+actions.ss_aoe+=/frostbolt
+actions.ss_aoe+=/call_action_list,name=movement
+
+actions.ss_st=comet_storm
+actions.ss_st+=/flurry,if=buff.brain_freeze.react&buff.thermal_void.down
+actions.ss_st+=/ice_lance,if=buff.fingers_of_frost.react=2
+actions.ss_st+=/frozen_orb
+actions.ss_st+=/glacial_spike
+actions.ss_st+=/ice_lance,if=buff.fingers_of_frost.react
+actions.ss_st+=/ice_lance,if=debuff.freezing.react>=6
+actions.ss_st+=/ray_of_frost,if=icicles<3|time-action.potion.last_used<25
+actions.ss_st+=/flurry,if=cooldown_react
+actions.ss_st+=/frostbolt
+actions.ss_st+=/call_action_list,name=movement
+
+# Played when the variable target_swapping=1. It's the ST/AoE rotation but always targets the enemy with the lowest Freezing stacks when casting a spell that generates Freezing.
+actions.ss_tarswap=comet_storm
+actions.ss_tarswap+=/blizzard,target_if=active_enemies>=4&buff.freezing_rain.up
+actions.ss_tarswap+=/flurry,target_if=min:debuff.freezing.react,if=buff.brain_freeze.react&buff.thermal_void.down
+actions.ss_tarswap+=/ice_lance,if=buff.fingers_of_frost.react=2
+actions.ss_tarswap+=/frozen_orb
+actions.ss_tarswap+=/glacial_spike,target_if=min:debuff.freezing.react
+actions.ss_tarswap+=/ice_lance,if=buff.fingers_of_frost.react
+# Against 2 targets, wait for both to have 6+ freezing stacks before casting IL. Against 3+ targets cast IL as soon as any one target has 6+ stacks.
+actions.ss_tarswap+=/ice_lance,target_if=min:debuff.freezing.react>=6,if=active_enemies<=2&debuff.freezing.react>=6
+actions.ss_tarswap+=/ice_lance,target_if=debuff.freezing.react>=6,if=active_enemies>=3
+actions.ss_tarswap+=/ice_nova,if=active_enemies>=4&talent.cone_of_frost
+actions.ss_tarswap+=/cone_of_cold,if=active_enemies>=4&talent.cone_of_frost
+actions.ss_tarswap+=/blizzard,if=active_enemies>=4&talent.freezing_winds
+actions.ss_tarswap+=/ray_of_frost,target_if=min:debuff.freezing.react,if=icicles<3|time-action.potion.last_used<25
+actions.ss_tarswap+=/flurry,target_if=min:debuff.freezing.react,if=cooldown_react
+actions.ss_tarswap+=/frostbolt,target_if=min:debuff.freezing.react
+actions.ss_tarswap+=/call_action_list,name=movement
+
+head=brambledawn_halo,id=251080,bonus_id=6652/12667/12699/12801/13440/13577,ilevel=272
+neck=pendant_of_aching_grief,id=251096,bonus_id=6652/12699/12795/13440/13668,ilevel=266,gem_id=240967
+shoulders=voidbreakers_leyline_nexi,id=250058,bonus_id=6652/12794/13334/13340/13574,ilevel=263
+back=defiant_defenders_drape,id=260312,bonus_id=6652/12699/12795/13440/13577,ilevel=266
+chest=voidbreakers_robe,id=250063,bonus_id=40/12798/13336/13575,ilevel=276,enchant_id=7987
+wrists=bracers_of_blazing_light,id=258580,bonus_id=6652/12667/12699/12793/13440/13577,ilevel=259
+hands=voidbreakers_gloves,id=250061,bonus_id=3157/6652/12801/13337/13440/13574,ilevel=272
+waist=harati_defenders_sash,id=263265,bonus_id=12790/13577,ilevel=263
+legs=voidbreakers_britches,id=250059,bonus_id=6652/12798/13334/13339/13575,ilevel=276
+feet=sprawling_rootpads,id=249630,bonus_id=6652/12786/13577,ilevel=250
+finger1=masterwork_sindorei_band,id=240949,bonus_id=8791/12066/12214/13622/13667/12497,ilevel=285,gem_id=240866,enchant_id=7967
+finger2=signet_of_the_starved_beast,id=249336,bonus_id=6652/12794/13334/13668,ilevel=263
+trinket1=emberwing_feather,id=250144,bonus_id=42/12699/12796/13440,ilevel=269
+trinket2=vaelgors_final_stare,id=249346,bonus_id=6652/12798/13334,ilevel=276
+main_hand=spellboon_saber,id=193710,bonus_id=6652/12701/12806/13440,ilevel=289,enchant_id=7981
+off_hand=alnhara_lantern,id=245769,bonus_id=8791/8960/12066/12214/12693/13621/13667/12497,ilevel=272
+
+# Gear Summary
+# gear_ilvl=269.81
+# gear_stamina=13715
+# gear_intellect=1523
+# gear_crit_rating=781
+# gear_haste_rating=470
+# gear_mastery_rating=523
+# gear_versatility_rating=270
+# gear_speed_rating=48
+# gear_avoidance_rating=66
+# gear_armor=472
+# set_bonus=midnight_season_1_2pc=1
+# set_bonus=midnight_season_1_4pc=1

@@ -1,0 +1,277 @@
+{
+  "provenance": "Recorded intention excerpt: 64LzFa2vM37CrNDJ fight28 actor50; incomplete, captured2026-10-16.",
+  "complete": false,
+  "start": 6262459,
+  "actor": 50,
+  "events": [
+    {
+      "timestamp": 6264788,
+      "type": "cast",
+      "sourceID": 50,
+      "targetID": 334,
+      "ability": {
+        "name": "Ray of Frost",
+        "guid": 205021,
+        "type": 16,
+        "abilityIcon": "ability_mage_rayoffrost.jpg"
+      },
+      "fight": 28,
+      "resourceActor": 1,
+      "classResources": [
+        {
+          "amount": 243410,
+          "max": 250000,
+          "type": 0,
+          "cost": 5000
+        }
+      ],
+      "hitPoints": 368260,
+      "maxHitPoints": 368260,
+      "attackPower": 222,
+      "spellPower": 2468,
+      "armor": 472,
+      "absorb": 0,
+      "x": -90897,
+      "y": 470520,
+      "facing": -752,
+      "mapID": 2529,
+      "versatility": 800,
+      "avoidance": 179,
+      "itemLevel": 269
+    },
+    {
+      "timestamp": 6275770,
+      "type": "begincast",
+      "sourceID": 50,
+      "targetID": -1,
+      "ability": {
+        "name": "Frostbolt",
+        "guid": 116,
+        "type": 16,
+        "abilityIcon": "spell_frost_frostbolt02.jpg"
+      },
+      "fight": 28
+    },
+    {
+      "timestamp": 6276903,
+      "type": "cast",
+      "sourceID": 50,
+      "targetID": 334,
+      "ability": {
+        "name": "Frostbolt",
+        "guid": 116,
+        "type": 16,
+        "abilityIcon": "spell_frost_frostbolt02.jpg"
+      },
+      "fight": 28,
+      "resourceActor": 1,
+      "classResources": [
+        {
+          "amount": 250000,
+          "max": 250000,
+          "type": 0,
+          "cost": 5000
+        }
+      ],
+      "hitPoints": 272153,
+      "maxHitPoints": 368260,
+      "attackPower": 222,
+      "spellPower": 2419,
+      "armor": 472,
+      "absorb": 5888,
+      "x": -90270,
+      "y": 470177,
+      "facing": -782,
+      "mapID": 2529,
+      "versatility": 800,
+      "avoidance": 179,
+      "itemLevel": 269
+    },
+    {
+      "timestamp": 6299268,
+      "type": "begincast",
+      "sourceID": 50,
+      "targetID": -1,
+      "ability": {
+        "name": "Frostbolt",
+        "guid": 116,
+        "type": 16,
+        "abilityIcon": "spell_frost_frostbolt02.jpg"
+      },
+      "fight": 28
+    },
+    {
+      "timestamp": 6300410,
+      "type": "cast",
+      "sourceID": 50,
+      "targetID": 334,
+      "ability": {
+        "name": "Frostbolt",
+        "guid": 116,
+        "type": 16,
+        "abilityIcon": "spell_frost_frostbolt02.jpg"
+      },
+      "fight": 28,
+      "resourceActor": 1,
+      "classResources": [
+        {
+          "amount": 250000,
+          "max": 250000,
+          "type": 0,
+          "cost": 5000
+        }
+      ],
+      "hitPoints": 368260,
+      "maxHitPoints": 368260,
+      "attackPower": 222,
+      "spellPower": 2419,
+      "armor": 472,
+      "absorb": 0,
+      "x": -90128,
+      "y": 472372,
+      "facing": -754,
+      "mapID": 2529,
+      "versatility": 800,
+      "avoidance": 179,
+      "itemLevel": 269
+    },
+    {
+      "timestamp": 6328298,
+      "type": "cast",
+      "sourceID": 50,
+      "targetID": -1,
+      "ability": {
+        "name": "Ice Cold",
+        "guid": 414658,
+        "type": 16,
+        "abilityIcon": "spell_fire_bluefire.jpg"
+      },
+      "fight": 28,
+      "resourceActor": 1,
+      "classResources": [
+        {
+          "amount": 250000,
+          "max": 250000,
+          "type": 0
+        }
+      ],
+      "hitPoints": 142895,
+      "maxHitPoints": 368260,
+      "attackPower": 222,
+      "spellPower": 2444,
+      "armor": 472,
+      "absorb": 0,
+      "x": -89605,
+      "y": 472058,
+      "facing": -659,
+      "mapID": 2529,
+      "versatility": 800,
+      "avoidance": 179,
+      "itemLevel": 269
+    },
+    {
+      "timestamp": 6331442,
+      "type": "cast",
+      "sourceID": 50,
+      "targetID": -1,
+      "ability": {
+        "name": "Ice Barrier",
+        "guid": 11426,
+        "type": 16,
+        "abilityIcon": "spell_ice_lament.jpg"
+      },
+      "fight": 28,
+      "resourceActor": 1,
+      "classResources": [
+        {
+          "amount": 245005,
+          "max": 250000,
+          "type": 0,
+          "cost": 7500
+        }
+      ],
+      "hitPoints": 237545,
+      "maxHitPoints": 368260,
+      "attackPower": 222,
+      "spellPower": 2419,
+      "armor": 472,
+      "absorb": 187503,
+      "x": -88998,
+      "y": 471685,
+      "facing": -210,
+      "mapID": 2529,
+      "versatility": 800,
+      "avoidance": 179,
+      "itemLevel": 269
+    },
+    {
+      "timestamp": 6340279,
+      "type": "cast",
+      "sourceID": 50,
+      "targetID": -1,
+      "ability": {
+        "name": "Shimmer",
+        "guid": 212653,
+        "type": 64,
+        "abilityIcon": "spell_arcane_massdispel.jpg"
+      },
+      "fight": 28,
+      "resourceActor": 1,
+      "classResources": [
+        {
+          "amount": 246669,
+          "max": 250000,
+          "type": 0,
+          "cost": 5000
+        }
+      ],
+      "hitPoints": 368260,
+      "maxHitPoints": 368260,
+      "attackPower": 222,
+      "spellPower": 2419,
+      "armor": 472,
+      "absorb": 89230,
+      "x": -88587,
+      "y": 470792,
+      "facing": -260,
+      "mapID": 2529,
+      "versatility": 800,
+      "avoidance": 179,
+      "itemLevel": 269
+    },
+    {
+      "timestamp": 6478342,
+      "type": "cast",
+      "sourceID": 50,
+      "targetID": -1,
+      "ability": {
+        "name": "Emberwing Heatwave",
+        "guid": 1250508,
+        "type": 4,
+        "abilityIcon": "inv_icon_feather06a.jpg"
+      },
+      "fight": 28,
+      "resourceActor": 1,
+      "classResources": [
+        {
+          "amount": 249610,
+          "max": 250000,
+          "type": 0
+        }
+      ],
+      "hitPoints": 163044,
+      "maxHitPoints": 368260,
+      "attackPower": 222,
+      "spellPower": 2444,
+      "armor": 472,
+      "absorb": 0,
+      "x": -91449,
+      "y": 472495,
+      "facing": -732,
+      "mapID": 2529,
+      "versatility": 800,
+      "avoidance": 179,
+      "itemLevel": 269
+    }
+  ]
+}

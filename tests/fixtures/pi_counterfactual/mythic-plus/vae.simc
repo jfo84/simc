@@ -1,0 +1,23 @@
+# Exported from Warcraft Logs summary via its Export to SimC control.
+# Report: https://www.warcraftlogs.com/reports/m9tCZ7H68cBpJnrK?fight=4&type=summary&source=1201
+# Exported 2026-10-16; source run is from the previous Mythic+ season.
+deathknight="Vae"
+level=90
+role=dps
+spec=unholy
+talents=CwPAAAAAAAAAAAAAAAAAAAAAAAYmhZMjBz2MzMTz2MzYmZMAAAAAAAAMzYYAwyMmZ2MzYmZALmNDDMwsxQjFMgZAYMzMmBYmZYMA
+head=,id=249970,enchant_id=8017,bonus_id=6652/13440/13338/13575/13534/12806,gem_id=240983,ilevel=289
+neck=,id=266314,bonus_id=13447/12798,gem_id=240908,ilevel=276
+shoulder=,id=50234,enchant_id=8001,bonus_id=13440/42/13577/12699/12798,ilevel=276
+chest=,id=249973,enchant_id=7987,bonus_id=6652/13440/13336/13575/12806,ilevel=289
+waist=,id=249967,bonus_id=6652/13440/13534/12806,gem_id=240898,ilevel=289
+legs=,id=249969,enchant_id=8159,bonus_id=6652/13440/13339/13575/12805,ilevel=285
+feet=,id=260377,enchant_id=7963,bonus_id=6652/13577/13334/10844/12798,ilevel=276
+wrist=,id=237834,bonus_id=12214/13667/12497/12066/8960/12384/8791/13622/12666,gem_id=240908,ilevel=285
+hands=,id=249971,bonus_id=6652/13440/13337/13574/12802,ilevel=276
+finger1=,id=193708,enchant_id=7967,bonus_id=13440/6652/13668/12699/12806,gem_id=240898,ilevel=289
+finger2=,id=240949,enchant_id=7967,bonus_id=12214/13667/12497/12066/8791/13622,gem_id=240898,ilevel=285
+trinket1=,id=249344,bonus_id=6652/13335/13654,ilevel=298
+trinket2=,id=249343,bonus_id=6652/13335/12806,ilevel=289
+back=,id=239656,bonus_id=12214/13667/12497/12066/8960/12384/8791/13622,ilevel=285
+main_hand=,id=49802,enchant_id=6245,bonus_id=13440/42/12701/13654,ilevel=298

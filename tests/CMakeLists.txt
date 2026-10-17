@@ -30,3 +30,8 @@ foreach(SIMC_TEST_SPEC IN LISTS SIMC_TEST_SPECS)
     )
   endforeach()
 endforeach()
+
+add_test(NAME PI_Counterfactual
+  COMMAND ${CMAKE_COMMAND} -E env SIMC_CLI_PATH=$<TARGET_FILE:simc>
+    ${Python3_EXECUTABLE} -m unittest discover -s ${CMAKE_CURRENT_LIST_DIR} -p test_pi_counterfactual.py -v
+)

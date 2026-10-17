@@ -1,0 +1,24 @@
+# Exported from Warcraft Logs summary via its Export to SimC control.
+# Report: https://www.warcraftlogs.com/reports/yMrk3jBH8txgvFL4?fight=47&type=summary&source=137
+# Exported 2026-10-16; report created 2026-04-22. Export time is not fight time.
+shaman="Jeefy"
+level=90
+role=dps
+spec=elemental
+talents=CYQAAAAAAAAAAAAAAAAAAAAAAAAAAAzMbbzMzMzMLbbDMmZAAAAAwiZMsBLwMM0YDAmlZmZM2WmpFmx2YZmZmxMYZGLmZYmFAgBwMDMMMA
+head=,id=249979,enchant_id=8017,bonus_id=6652/13534/13440/13338/13575/12806,gem_id=240983,ilevel=289
+neck=,id=240950,bonus_id=12214/12497/12066/8791/13622,gem_id=240908,ilevel=285
+shoulder=,id=249977,enchant_id=8001,bonus_id=40/13440/13340/13574/12798,ilevel=276
+chest=,id=249982,enchant_id=7987,bonus_id=6652/13440/13336/13575/12798,ilevel=276
+waist=,id=249976,bonus_id=6652/13335/12806/13534,gem_id=240908,ilevel=289
+legs=,id=244582,enchant_id=7935,bonus_id=12214/12497/12066/8960/12384/8791/13622,ilevel=285
+feet=,id=249320,enchant_id=7963,bonus_id=42/13577/13335/12806,ilevel=289
+wrist=,id=251079,bonus_id=13440/6652/13534/13577/12699/12798,gem_id=240908,ilevel=276
+hands=,id=249980,bonus_id=6652/13440/13337/13574/12798,ilevel=276
+finger1=,id=251115,enchant_id=7969,bonus_id=13440/41/13668/12699/12798,gem_id=240908,ilevel=276
+finger2=,id=193708,enchant_id=7997,bonus_id=13440/6652/13668/12699/12798,gem_id=240908,ilevel=276
+trinket1=,id=250144,bonus_id=13440/6652/12699/12798,ilevel=276
+trinket2=,id=249343,bonus_id=6652/13335/12805,ilevel=285
+back=,id=249974,bonus_id=6652/13440/12802,ilevel=276
+main_hand=,id=245770,enchant_id=8041,bonus_id=12214/12497/12066/12693/8960/8791/13622,ilevel=285
+tabard=,id=28788,ilevel=14

@@ -1,0 +1,39 @@
+{
+  "captured_date": "2026-10-16",
+  "capture_method": "Warcraft Logs public browser UI, English events CSV export and Summary Export to SimC. Profile line breaks were restored after transferring copied export text through the native browser address field. No API token or synthetic event substitution.",
+  "raid": {
+    "report": "yMrk3jBH8txgvFL4",
+    "report_created_date": "2026-04-22",
+    "fight": 47,
+    "encounter": "Mythic Vorasius",
+    "player": "Jeefy",
+    "actor": 137,
+    "spec": "Elemental Shaman",
+    "pi_events_url": "https://www.warcraftlogs.com/reports/yMrk3jBH8txgvFL4?fight=47&type=auras&ability=10060&source=137&view=events",
+    "casts_url": "https://www.warcraftlogs.com/reports/yMrk3jBH8txgvFL4?fight=47&type=casts&source=137&view=events",
+    "cast_export_pages": 1,
+    "cast_rows": 260,
+    "pi_applications": 2,
+    "ui_observation": "Final cast export page had no Next Page link. Duplicate Flame Shock casts at 04:52.967 retained. No claim these are all foreground decisions."
+  },
+  "mythic-plus": {
+    "report": "m9tCZ7H68cBpJnrK",
+    "fight": 4,
+    "encounter": "Nexus-Point Xenas +12, Midnight Season 1",
+    "player": "Vae",
+    "actor": 1201,
+    "spec": "Unholy Death Knight",
+    "pi_events_url": "https://www.warcraftlogs.com/reports/m9tCZ7H68cBpJnrK?fight=4&type=auras&ability=10060&source=1201&view=events",
+    "casts_url": "https://www.warcraftlogs.com/reports/m9tCZ7H68cBpJnrK?fight=4&type=casts&source=1201&view=events",
+    "cast_export_pages": 2,
+    "cast_rows": 689,
+    "pi_applications": 5,
+    "ui_observation": "Followed Next Page after first export; final page had no Next Page link. Three ambiguous VaeUnknown source/target display cells retained unchanged."
+  },
+  "limits": [
+    "CSV exports contain display names, not game spell IDs or complete resource and buff state.",
+    "Character exports omit race; their export date is not the combat date.",
+    "Neither fixture is a validated player behavior model or a no-PI damage estimate.",
+    "The sibling synthetic.json is an artificial API-shaped fixture; it is not part of these recorded UI exports."
+  ]
+}

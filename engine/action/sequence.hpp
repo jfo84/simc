@@ -59,3 +59,33 @@ struct strict_sequence_t : public action_t
   void schedule_execute(action_state_t* execute_state = nullptr) override;
   void init_finished() override;
 };
+
+// Recorded intentions use either encounter timestamps or delays after native readiness.
+struct observed_sequence_t final : public action_t
+{
+  struct trace_entry_t
+  {
+    size_t index;
+    timespan_t foreground_ready_time, ready_time, due_time, start_time, idle_before;
+    std::string action;
+    bool fallback;
+  };
+
+  std::vector<action_t*> intents;
+  std::vector<timespan_t> times, delays, anchors;
+  std::vector<trace_entry_t> trace, reported_trace;
+  size_t reported_cursor = 0;
+  action_t* wait_action;
+  action_priority_list_t* fallback_list;
+  std::string fallback_name, options_text, time_str, delay_str, anchor_str;
+  double max_wait_seconds = 5.0;
+  timespan_t max_wait, due_time, foreground_ready_time, ready_time, blocked_since;
+  size_t cursor;
+  bool pending;
+
+  observed_sequence_t( player_t*, util::string_view );
+  void init() override;
+  void init_finished() override;
+  void reset() override;
+  action_t* select_next();
+};

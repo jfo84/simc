@@ -1,0 +1,28 @@
+{
+  "schema": "simc.pi.capture.v1",
+  "fixture": "Synthetic API-shaped events; not evidence from a real player or a recorded API response.",
+  "report": {"code": "SyntheticPull001", "startTime": 0},
+  "fight": {"id": 1, "name": "Synthetic target", "startTime": 10000, "endTime": 40000},
+  "actors": [
+    {"id": 1, "name": "probe", "type": "Player", "subType": "Mage", "petOwner": null},
+    {"id": 2, "name": "pet", "type": "Pet", "subType": "Pet", "petOwner": 1},
+    {"id": 3, "name": "other", "type": "Player", "subType": "Mage", "petOwner": null}
+  ],
+  "pages": [
+    {"data": [
+      {"type": "combatantinfo", "timestamp": 10000, "sourceID": 1, "gear": [], "talents": []},
+      {"type": "applybuff", "timestamp": 10000, "sourceID": 3, "targetID": 1, "abilityGameID": 10060},
+      {"type": "begincast", "timestamp": 10000, "sourceID": 1, "targetID": 9, "abilityGameID": 116},
+      {"type": "cast", "timestamp": 11200, "sourceID": 1, "targetID": 9, "abilityGameID": 116},
+      {"type": "damage", "timestamp": 11500, "sourceID": 1, "targetID": 9, "abilityGameID": 116, "amount": 1000},
+      {"type": "damage", "timestamp": 12000, "sourceID": 2, "targetID": 9, "abilityGameID": 31707, "amount": 200},
+      {"type": "damage", "timestamp": 12000, "sourceID": 3, "targetID": 9, "abilityGameID": 116, "amount": 9000},
+      {"type": "removebuff", "timestamp": 15000, "sourceID": 3, "targetID": 1, "abilityGameID": 10060}
+    ], "nextPageTimestamp": 20000},
+    {"data": [
+      {"type": "applybuff", "timestamp": 20000, "sourceID": 3, "targetID": 1, "abilityGameID": 10060},
+      {"type": "refreshbuff", "timestamp": 21000, "sourceID": 3, "targetID": 1, "abilityGameID": 10060},
+      {"type": "removebuff", "timestamp": 23000, "sourceID": 3, "targetID": 1, "abilityGameID": 10060}
+    ], "nextPageTimestamp": null}
+  ]
+}
