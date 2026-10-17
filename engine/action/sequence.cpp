@@ -6,8 +6,13 @@
 #include "sequence.hpp"
 
 #include "player/player.hpp"
+#include "player/action_priority_list.hpp"
+#include <algorithm>
+#include <cmath>
+#include <map>
 #include "sim/option.hpp"
 #include "sim/sim.hpp"
+#include "sim/cooldown.hpp"
 #include "util/util.hpp"
 
 // ==========================================================================
@@ -356,4 +361,209 @@ void sequence_t::restart() { current_action = 0; restarted = true; last_restart 
 bool sequence_t::can_restart()
 {
   return !restarted && last_restart < sim->current_time();
+}
+
+
+namespace
+{
+struct observed_wait_t final : public action_t
+{
+  timespan_t duration = 0_ms;
+
+  explicit observed_wait_t( player_t* p ) : action_t( ACTION_OTHER, "observed_wait", p )
+  {
+    trigger_gcd = 0_ms;
+    harmful = interrupt_auto_attack = false;
+    quiet = sequence = true;
+    target = p;
+  }
+
+  timespan_t execute_time() const override
+  {
+    return duration;
+  }
+
+  void execute() override
+  {
+    player->iteration_waiting_time += time_to_execute;
+  }
+};
+
+std::vector<timespan_t> observed_times( std::string_view value )
+{
+  std::vector<timespan_t> result;
+  for ( auto part : util::string_split<std::string_view>( value, ";", false ) )
+  {
+    auto seconds = util::to_double( part );
+    if ( !std::isfinite( seconds ) || seconds < 0 || seconds >= timespan_t::max().total_seconds() )
+      throw sc_invalid_apl_argument( "Observed times must be finite, nonnegative seconds." );
+    result.push_back( timespan_t::from_seconds( seconds ) );
+  }
+  return result;
+}
+}  // namespace
+
+observed_sequence_t::observed_sequence_t( player_t* p, util::string_view options )
+  : action_t( ACTION_SEQUENCE, "observed_sequence", p ), wait_action( nullptr ), fallback_list( nullptr ),
+    options_text( options ), max_wait( 5_s ), cursor( 0 ), pending( false )
+{
+  trigger_gcd = 0_ms;
+  harmful = interrupt_auto_attack = false;
+  quiet = true;
+  target = p;
+  add_option( opt_string( "times", time_str ) );
+  add_option( opt_string( "delays", delay_str ) );
+  add_option( opt_string( "anchors", anchor_str ) );
+  add_option( opt_string( "fallback", fallback_name ) );
+  add_option( opt_float( "max_wait", max_wait_seconds ) );
+}
+
+void observed_sequence_t::init()
+{
+  auto parts = util::string_split<std::string_view>( options_text, ":", false );
+  if ( parts.size() < 2 )
+    throw sc_invalid_apl_argument( "Observed sequence requires timing options and actions." );
+  parse_options( parts.front() );
+  if ( time_str.empty() == delay_str.empty() || !std::isfinite( max_wait_seconds ) || max_wait_seconds < 0 ||
+       max_wait_seconds >= timespan_t::max().total_seconds() )
+    throw sc_invalid_apl_argument( "Observed sequence requires times or delays and max_wait >= 0." );
+  max_wait = timespan_t::from_seconds( max_wait_seconds );
+  times = time_str.empty() ? std::vector<timespan_t>{} : observed_times( time_str );
+  delays = delay_str.empty() ? std::vector<timespan_t>{} : observed_times( delay_str );
+  anchors = anchor_str.empty() ? std::vector<timespan_t>{} : observed_times( anchor_str );
+  if ( !std::is_sorted( times.begin(), times.end() ) )
+    throw sc_invalid_apl_argument( "Observed encounter times must be ordered." );
+
+  std::map<std::string_view, action_t*> unique;
+  for ( size_t i = 1; i < parts.size(); ++i )
+  {
+    auto [ found, inserted ] = unique.emplace( parts[ i ], nullptr );
+    if ( inserted )
+    {
+      auto separator = parts[ i ].find( ',' );
+      auto name = parts[ i ].substr( 0, separator );
+      auto opts = separator == std::string_view::npos ? std::string_view{} : parts[ i ].substr( separator + 1 );
+      found->second = player->create_action( name, opts );
+      if ( !found->second || found->second->type == ACTION_SEQUENCE || found->second->type == ACTION_CALL ||
+           found->second->type == ACTION_VARIABLE )
+        throw sc_invalid_apl_argument( "Observed intents must name executable actions." );
+      found->second->sequence = true;
+    }
+    intents.push_back( found->second );
+  }
+  if ( intents.size() != ( times.empty() ? delays.size() : times.size() ) ||
+       ( !anchors.empty() && anchors.size() != intents.size() ) )
+    throw sc_invalid_apl_argument( "Observed timings and actions must have the same length." );
+  wait_action = new observed_wait_t( player );
+  action_t::init();
+}
+
+void observed_sequence_t::init_finished()
+{
+  action_t::init_finished();
+  if ( std::count_if( player->action_list.begin(), player->action_list.end(), []( const action_t* a ) {
+         return dynamic_cast<const observed_sequence_t*>( a ) != nullptr;
+       } ) != 1 || !action_list || action_list->name_str == "precombat" )
+    throw sc_invalid_apl_argument( "Use one observed sequence per player, outside precombat." );
+  if ( player->enable_spell_queue || player->one_button_mode )
+    throw sc_invalid_apl_argument( "Observed sequence requires spell queue and one-button mode disabled." );
+  if ( sim->threads != 1 || sim->iterations != 1 )
+    throw sc_invalid_apl_argument( "Observed sequence requires threads=1 and iterations=1; repeat independent seed pairs." );
+  if ( !fallback_name.empty() )
+  {
+    fallback_list = player->find_action_priority_list( fallback_name );
+    if ( !fallback_list || fallback_list == action_list )
+      throw sc_invalid_apl_argument( "Observed fallback must name a separate existing action list." );
+  }
+  for ( auto* intent : intents )
+    if ( intent->background )
+      throw sc_invalid_apl_argument( "Observed intent is unavailable in this character's configuration." );
+}
+
+void observed_sequence_t::reset()
+{
+  if ( !trace.empty() )
+  {
+    reported_trace = trace;
+    reported_cursor = cursor;
+  }
+  action_t::reset();
+  cursor = 0;
+  pending = false;
+  blocked_since = timespan_t::min();
+  trace.clear();
+}
+
+action_t* observed_sequence_t::select_next()
+{
+  if ( cursor == intents.size() )
+    return nullptr;
+  auto now = sim->current_time();
+  if ( !pending )
+  {
+    foreground_ready_time = now;
+    ready_time = timespan_t::min();
+    due_time = times.empty() ? timespan_t::min() : times[ cursor ];
+    pending = true;
+    blocked_since = timespan_t::min();
+  }
+  auto* wait = static_cast<observed_wait_t*>( wait_action );
+  auto* intent = intents[ cursor ];
+  auto available = intent->action_ready() && intent->cooldown->queue_delay() <= 0_ms;
+  auto poll = 50_ms;
+  for ( auto* cooldown : { intent->cooldown, intent->internal_cooldown, intent->line_cooldown.get() } )
+    if ( cooldown->remains() > 0_ms )
+      poll = std::min( poll, cooldown->remains() );
+  if ( !available )
+  {
+    ready_time = timespan_t::min();
+    if ( times.empty() )
+      due_time = timespan_t::min();
+    auto floor = times.empty() ? ( anchors.empty() ? 0_ms : anchors[ cursor ] ) : times[ cursor ];
+    if ( now < floor )
+    {
+      wait->duration = std::min( poll, floor - now );
+      return wait;
+    }
+    // In the alternate branch a native cooldown is mandatory waiting, not player hesitation.
+    auto mandatory = times.empty() && std::max( { intent->cooldown->remains(),
+                         intent->internal_cooldown->remains(), intent->line_cooldown->remains() } ) > 0_ms;
+    if ( mandatory )
+      blocked_since = timespan_t::min();
+    else if ( blocked_since == timespan_t::min() )
+      blocked_since = now;
+    if ( !mandatory && now - blocked_since >= max_wait )
+      throw sc_runtime_error( fmt::format( "Observed intent {} ({}) remained unavailable for {:.3f}s.",
+                                          cursor, intent->name(), max_wait.total_seconds() ) );
+    if ( fallback_list )
+    {
+      auto* fallback = player->select_action( *fallback_list, execute_type::FOREGROUND );
+      if ( fallback )
+      {
+        trace.push_back( { cursor, foreground_ready_time, ready_time, due_time, now, 0_ms, fallback->name_str, true } );
+        return fallback;
+      }
+    }
+    wait->duration = mandatory ? poll : std::min( poll, max_wait - ( now - blocked_since ) );
+    return wait;
+  }
+  blocked_since = timespan_t::min();
+  if ( ready_time == timespan_t::min() )
+  {
+    ready_time = now;
+    if ( times.empty() )
+      due_time = now + delays[ cursor ];
+    if ( !anchors.empty() )
+      due_time = std::max( due_time, anchors[ cursor ] );
+  }
+  if ( now < due_time )
+  {
+    wait->duration = std::min( poll, due_time - now );
+    return wait;
+  }
+  trace.push_back( { cursor, foreground_ready_time, ready_time, due_time, now,
+                    std::max( 0_ms, due_time - ready_time ), intent->name_str, false } );
+  ++cursor;
+  pending = false;
+  return intent;
 }

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -18,6 +19,9 @@ FIXTURE = ROOT / "tests/fixtures/pi_counterfactual/synthetic.json"
 export_spec = importlib.util.spec_from_file_location("pi_log_exports", ROOT / "util_scripts/pi_log_exports.py")
 exports = importlib.util.module_from_spec(export_spec)
 export_spec.loader.exec_module(exports)
+sys.path.insert(0, str(ROOT / "util_scripts"))
+import pi_intent_replay as replay
+
 
 
 
@@ -195,6 +199,141 @@ class LogExportTests(unittest.TestCase):
         for value in ("00:60.000", "0:5", "nan"):
             with self.assertRaisesRegex(ValueError, "timestamp"):
                 exports.milliseconds(value)
+
+
+class IntentionPlanTests(unittest.TestCase):
+    def test_recorded_excerpt_preserves_starts_and_reports_missing_mechanics(self):
+        fixture = pi.read_json(FIXTURE.parent / "control/api-intents-excerpt.json")
+        result = replay.extract_intentions(fixture["events"], fixture["start"], fixture["actor"])
+        frostbolt = next(i for i in result["intents"] if i["action"] == "frostbolt")
+        self.assertEqual(frostbolt["time"], 13.311)
+        self.assertEqual(frostbolt["observed_completion"], 14.444)
+        blockers = {b["kind"]: b for b in result["blockers"]}
+        self.assertEqual(blockers["unsupported_actions"]["counts"], {"Ice Cold": 1, "Ice Barrier": 1})
+        self.assertEqual(blockers["channel_timing"]["actions"], ["Ray of Frost"])
+        self.assertIn("Shimmer", blockers["independent_off_gcd_stream"]["actions"])
+
+    def test_missing_hard_cast_start_is_not_treated_as_an_instant(self):
+        event = {"type": "cast", "timestamp": 1000, "sourceID": 1, "targetID": 2,
+                 "ability": {"guid": 199786, "name": "Glacial Spike"}}
+        result = replay.extract_intentions([event], 0, 1)
+        self.assertEqual(result["blockers"][0]["kind"], "missing_cast_starts")
+
+    def test_sequence_delimiters_and_world_anchors(self):
+        plan = {"intents": [{"time": 1, "action": "frostbolt"},
+                            {"time": 40, "action": "frost_nova", "clock": "world"}]}
+        self.assertEqual(replay.sequence_option(plan, [1, 0], "delays"),
+                         "actions=observed_sequence,delays=1.000;0.000,anchors=1.000;40.000:frostbolt:frost_nova")
+        plan["intents"][0]["action"] = "frostbolt/frostbolt"
+        with self.assertRaisesRegex(ValueError, "delimiters"):
+            replay.sequence_option(plan, [1, 0], "delays")
+
+
+@unittest.skipUnless(os.environ.get("SIMC_CLI_PATH"), "Set SIMC_CLI_PATH for native replay checks")
+class IntentionReplayTests(unittest.TestCase):
+    def pair(self, directory, plan):
+        profile = Path(directory) / "probe.simc"
+        profile.write_text("mage=probe\nlevel=90\nrace=human\nspec=frost\noptimal_raid=0\n"
+                           "actions.precombat=snapshot_stats\n")
+        output = Path(directory) / "pair"
+        result = replay.run_pair(plan, profile, os.environ["SIMC_CLI_PATH"], output)
+        players = [pi.read_json(output / (name + ".json"))["sim"]["players"][0]
+                   for name in ("reference", "without_pi")]
+        return result, players
+
+    def plan(self, windows):
+        return {"schema": "simc.pi.intent_plan.v1", "duration": 12.3, "blockers": [],
+                "power_infusion_windows": windows,
+                "intents": [{"time": t, "action": "frostbolt"} for t in [0, 2, 4, 6, 8, 10]]}
+
+    def test_actor_time_expands_and_stays_separate_after_pi_expires(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result, (reference, alternate) = self.pair(directory, self.plan([{"start": 1, "duration": 6}]))
+        ref = reference["observed_sequence"]["trace"]
+        alt = alternate["observed_sequence"]["trace"]
+        self.assertEqual(ref[0], alt[0])
+        self.assertEqual(result["reference_max_lateness"], 0)
+        self.assertGreater(alt[2]["start_time"], ref[2]["start_time"])
+        self.assertGreater(alt[4]["start_time"], ref[4]["start_time"])
+        self.assertGreater(ref[4]["start_time"], 7)
+        self.assertEqual(result["reference_native_executes"]["frostbolt"], 6)
+        self.assertEqual(result["without_pi_native_executes"]["frostbolt"], 5)
+        self.assertGreater(result["reference_damage"], result["without_pi_damage"])
+        self.assertFalse(result["ranking_eligible"])
+
+    def test_no_pi_control_replays_identically_on_the_two_clocks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result, (reference, alternate) = self.pair(directory, self.plan([]))
+        self.assertEqual(result["reference_damage"], result["without_pi_damage"])
+        self.assertEqual([e["start_time"] for e in reference["observed_sequence"]["trace"]],
+                         [e["start_time"] for e in alternate["observed_sequence"]["trace"]])
+
+    def test_world_anchor_and_cooldown_do_not_expand_with_player_time(self):
+        plan = self.plan([{"start": 1, "duration": 6}])
+        plan["duration"] = 42
+        plan["intents"][0]["action"] = "frost_nova"
+        plan["intents"][-1] = {"time": 40, "action": "frost_nova", "clock": "world"}
+        with tempfile.TemporaryDirectory() as directory:
+            _, players = self.pair(directory, plan)
+        for player in players:
+            self.assertEqual(player["observed_sequence"]["trace"][-1]["start_time"], 40)
+
+    def test_native_cooldown_wait_is_not_reapplied_as_player_delay(self):
+        plan = {"schema": "simc.pi.intent_plan.v1", "duration": 34, "blockers": [],
+                "power_infusion_windows": [{"start": 1, "duration": 6}],
+                "intents": [{"time": 0, "action": "frost_nova"}, {"time": 30, "action": "frost_nova"}]}
+        with tempfile.TemporaryDirectory() as directory:
+            result, players = self.pair(directory, plan)
+        self.assertAlmostEqual(result["delays"][1], 0, places=3)
+        for player in players:
+            self.assertAlmostEqual(player["observed_sequence"]["trace"][1]["start_time"], 30, places=3)
+
+    def test_first_delay_is_relative_to_initial_action_availability(self):
+        with tempfile.TemporaryDirectory() as directory:
+            events = []
+            for mode, timing in (("times", 3), ("delays", 2)):
+                output = Path(directory) / (mode + ".json")
+                result = subprocess.run(
+                    [os.environ["SIMC_CLI_PATH"], "mage=probe", "level=90", "race=human", "spec=frost",
+                     "optimal_raid=0", "iterations=1", "threads=1", "fixed_time=1", "max_time=6",
+                     "vary_combat_length=0", "enable_spell_queue=0",
+                     f"actions=observed_sequence,{mode}={timing}:frostbolt,if=time>=1",
+                     f"json={output},version=2.0.0"],
+                    text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+                self.assertEqual(result.returncode, 0, result.stdout[-2000:])
+                events.append(pi.read_json(output)["sim"]["players"][0]["observed_sequence"]["trace"][0])
+        for event in events:
+            self.assertAlmostEqual(event["ready_time"], 1, places=3)
+            self.assertAlmostEqual(event["start_time"], 3, places=3)
+
+    def test_unavailable_intents_fail_explicitly_or_use_the_named_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            profile = Path(directory) / "probe.simc"
+            profile.write_text("mage=probe\nlevel=90\nrace=human\nspec=frost\noptimal_raid=0\n"
+                               "actions.fallback=frostbolt\n")
+            base = [os.environ["SIMC_CLI_PATH"], str(profile), "iterations=1", "threads=1",
+                    "fixed_time=1", "max_time=35", "vary_combat_length=0"]
+            failed = subprocess.run(base + ["actions=observed_sequence,times=0;2,max_wait=0:frost_nova:frost_nova"],
+                                    text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+            self.assertEqual(failed.returncode, 50)
+            self.assertIn("remained unavailable", failed.stdout)
+            output = Path(directory) / "fallback.json"
+            succeeded = subprocess.run(base + ["actions=observed_sequence,times=0;2,fallback=fallback,max_wait=40:frost_nova:frost_nova",
+                                                f"json={output},version=2.0.0"],
+                                        text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+            self.assertEqual(succeeded.returncode, 0, succeeded.stdout[-2000:])
+            trace = pi.read_json(output)["sim"]["players"][0]["observed_sequence"]["trace"]
+            self.assertTrue(any(e["fallback"] for e in trace))
+            self.assertEqual([e["index"] for e in trace if not e["fallback"]], [0, 1])
+
+    def test_invalid_replay_configuration_fails_cleanly(self):
+        for option in ("times=0;1:frostbolt", "times=1;0:frostbolt:frostbolt", "delays=-1:frostbolt",
+                       "times=0,max_wait=nan:frostbolt", "times=0,delays=0:frostbolt"):
+            with self.subTest(option=option):
+                result = subprocess.run([os.environ["SIMC_CLI_PATH"], "mage=probe", "spec=frost",
+                                         "iterations=1", "threads=1", "actions=observed_sequence," + option],
+                                        text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=20)
+                self.assertEqual(result.returncode, 30, result.stdout[-1000:])
 
 
 @unittest.skipUnless(os.environ.get("SIMC_CLI_PATH"), "Set SIMC_CLI_PATH for native engine checks")

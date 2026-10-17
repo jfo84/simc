@@ -6,7 +6,7 @@ Changing haste requires simulating all subsequent casts, resources, procs and
 cooldown decisions again. Subtracting damage during PI does not answer this question.
 
 This implementation supplies event capture, observation extraction, exact PI
-windows, and paired simulation diagnostics. It does **not** infer a player policy,
+windows, native foreground intention replay, and paired simulation diagnostics. It does **not** infer a player policy,
 reconstruct an encounter automatically, or produce a PI-adjusted ranking. All
 results have `ranking_eligible: false`, regardless of baseline damage agreement.
 
@@ -114,6 +114,67 @@ no-PI prediction. Those counts can include modeled background actions and are no
 a cast-by-cast fidelity metric. A shared random seed makes each arm repeatable;
 it does not preserve the same per-action random outcomes when the rotations diverge.
 
+## Replay foreground intentions on a separate action timeline
+
+The experimental replay controller executes native SimC actions in recorded order.
+It keeps encounter events and cooldowns on simulation time while allowing casts,
+GCDs, resources and procs to change when PI is removed. Divergence persists after
+PI expires. This is a pair of runs from combat start with the same seed, rather
+than a clone of the native event queue at the first PI application. The runner
+rejects different intention traces before that application.
+
+```sh
+python3 util_scripts/pi_intent_replay.py plan capture.json PLAYER_ACTOR_ID plan.json
+python3 util_scripts/pi_intent_replay.py run plan.json player.simc \
+  --simc build/simc --output intention-pair --seed 42
+```
+
+The current planner has explicit Frost Mage spell bindings. It matches successful
+hardcasts to their begin events and records their start as the intention time.
+It refuses uncovered spells, missing or canceled cast starts, channel timing,
+overlapping off-GCD actions and multiple targets. The complete no-PI control
+contains 189 intentions and fails this preflight: Ice Cold, Ice Barrier, Ray of
+Frost, Shimmer, the on-use trinket, a pre-pull Glacial Spike, canceled starts and
+target transitions still need reconstruction. The recorded excerpt and blocker
+summary are in `tests/fixtures/pi_counterfactual/control/`. No incomplete plan is
+silently promoted to a complete replay.
+
+In the reference run, each intention waits until its recorded time and native
+availability. The controller measures the remaining pause after the intended
+action becomes available. The no-PI run applies that pause after its own native
+availability, including for the first intention. Mandatory cooldown waiting is
+not copied as hesitation. Every recorded timestamp remains a lower bound, so the
+alternate cannot anticipate a recorded intention. Intentions marked `clock=world`
+have no copied pause and remain tied to that lower bound. These rules preserve
+an explicit timing hypothesis; the residual pauses are not directly observed
+human reaction times. Availability is sampled at intervals of at most 50 ms,
+shortened for known cooldown deadlines.
+
+Native APL controls are also available directly:
+
+```ini
+# Semicolons separate times; colons separate native actions.
+actions=observed_sequence,times=0;2;4:frostbolt:frostbolt:frostbolt
+# Delays are relative to each intended action's availability.
+actions=observed_sequence,delays=0;0.25;0,anchors=0;2;4:frostbolt:frostbolt:frostbolt
+```
+
+Use one controller per player with `iterations=1`, `threads=1`, and spell queuing
+and one-button mode disabled. An unavailable action fails after `max_wait`
+seconds (default 5) of unexplained waiting. In delay mode, known cooldown waiting
+does not consume that budget. An optional `fallback=NAME` selects an explicitly
+supplied existing APL while an intention is unavailable after its time floor;
+it is a behavior assumption that must be validated. The controller never drops
+an unavailable intention silently.
+
+Reports include each intention's foreground readiness, native availability,
+due time, start and residual pause, plus fallback selections. `scheduled` counts
+actions selected for execution; a cast can still finish after the encounter ends.
+The paired diagnostic includes executed-action counts and damage, manifests and
+both native reports. One seeded trajectory does not measure uncertainty. Native
+random draws can diverge after PI, and historical mechanics and encounter inputs
+still require validation. Every replay remains `ranking_eligible: false`.
+
 ## Engine controls
 
 These player options are available independently of the Python harness:
@@ -188,5 +249,8 @@ ctest --test-dir build -R '^PI_Counterfactual$' --output-on-failure
 
 The tests exercise offline pagination and event parsing, native PI window timing,
 disabling PI through scheduled and APL sources, changed cast counts after a full
-re-simulation, legacy compatibility and paired-run diagnostics. They do not
+re-simulation, legacy compatibility and paired-run diagnostics. Native replay checks
+cover post-PI divergence, an identical no-PI control, encounter anchors, cooldown
+waiting, the first availability-relative delay, explicit fallback and invalid
+configuration. They do not
 establish the accuracy of a logged-player counterfactual.

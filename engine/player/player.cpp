@@ -11108,6 +11108,8 @@ action_t* player_t::create_action( util::string_view name, util::string_view opt
     return new sequence_t( this, options_str );
   if ( name == "strict_sequence" )
     return new strict_sequence_t( this, options_str );
+  if ( name == "observed_sequence" )
+    return new observed_sequence_t( this, options_str );
   if ( name == "snapshot_stats" )
     return new snapshot_stats_t( this, options_str );
   if ( name == "start_moving" )
@@ -14265,6 +14267,12 @@ action_t* player_t::select_action( const action_priority_list_t& list,
 
     if ( a->action_ready() )
     {
+      if ( a->type == ACTION_SEQUENCE && a->name_str == "observed_sequence" )
+      {
+        if ( et != execute_type::FOREGROUND || context )
+          return nullptr;
+        return static_cast<observed_sequence_t*>( a )->select_next();
+      }
       // Execute variable operation, and continue processing
       if ( a->type == ACTION_VARIABLE )
       {

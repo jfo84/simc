@@ -23,6 +23,7 @@
 #include <ctime>
 
 #include "simulationcraft.hpp"
+#include "action/sequence.hpp"
 
 using namespace rapidjson;
 using namespace js;
@@ -755,6 +756,34 @@ void to_json( JsonOutput& arr, const ::report::json::report_configuration_t& rep
   root[ "role" ] = util::role_type_string( p.role );
   root[ "specialization" ] = util::specialization_string( p.specialization() );
   root[ "profile_source" ] = util::profile_source_string( p.profile_source_ );
+  for ( auto* action : p.action_list )
+  {
+    auto* observed = dynamic_cast<observed_sequence_t*>( action );
+    if ( !observed )
+      continue;
+    auto replay = root[ "observed_sequence" ];
+    replay[ "mode" ] = observed->times.empty() ? "actor_delays" : "encounter_times";
+    replay[ "scheduled" ] = static_cast<unsigned>( observed->trace.empty() ? observed->reported_cursor : observed->cursor );
+    replay[ "total" ] = static_cast<unsigned>( observed->intents.size() );
+    auto trace = replay[ "trace" ];
+    trace.make_array();
+    const auto& events = observed->trace.empty() ? observed->reported_trace : observed->trace;
+    for ( const auto& event : events )
+    {
+      auto entry = trace.add();
+      entry[ "index" ] = static_cast<unsigned>( event.index );
+      entry[ "action" ] = event.action;
+      entry[ "foreground_ready_time" ] = event.foreground_ready_time;
+      if ( event.ready_time != timespan_t::min() )
+        entry[ "ready_time" ] = event.ready_time;
+      if ( event.due_time != timespan_t::min() )
+        entry[ "due_time" ] = event.due_time;
+      entry[ "start_time" ] = event.start_time;
+      entry[ "idle_before" ] = event.idle_before;
+      entry[ "fallback" ] = event.fallback;
+    }
+  }
+
   root[ "talents" ] = p.talents_str;
   root[ "party" ] = p.party;
   root[ "ready_type" ] = p.ready_type;
